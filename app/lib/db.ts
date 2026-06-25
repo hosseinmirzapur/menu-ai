@@ -1,3 +1,5 @@
+import { getSupabase } from "./supabase";
+
 export interface DbMenuItem {
   id: string;
   nameEn: string;
@@ -24,41 +26,55 @@ export interface Order {
   timestamp: number;
 }
 
-interface KvClient {
-  get: <T>(key: string) => Promise<T | null>;
-  set: (key: string, value: any) => Promise<void>;
-}
-
-let kvClient: KvClient | null = null;
-
-async function getKvClient(): Promise<KvClient | null> {
-  if (kvClient !== null) return kvClient;
-  if (process.env.KV_URL) {
-    try {
-      const mod = await import("@vercel/kv");
-      kvClient = mod.kv as unknown as KvClient;
-      return kvClient;
-    } catch {
-      kvClient = null;
-    }
-  }
-  return null;
-}
-
-const inMemoryStore = new Map<string, Order>();
-const inMemoryMenuStore: DbMenuItem[] = [];
+const inMemoryOrders = new Map<string, Order>();
+const inMemoryMenuItems: DbMenuItem[] = [];
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
+function mapRowToOrder(row: any): Order {
+  return {
+    id: row.id,
+    items: row.items as OrderItem[],
+    table: row.table_number as string,
+    phone: row.phone,
+    status: row.status as OrderStatus,
+    timestamp: row.timestamp,
+  };
+}
+
+function mapItemToDb(item: DbMenuItem) {
+  return {
+    id: item.id,
+    name_en: item.nameEn,
+    name_fa: item.nameFa,
+    price: item.price,
+    category: item.category,
+  };
+}
+
+function mapRowToDbItem(row: any): DbMenuItem {
+  return {
+    id: row.id,
+    nameEn: row.name_en,
+    nameFa: row.name_fa,
+    price: row.price,
+    category: row.category,
+  };
+}
+
 export async function getOrders(): Promise<Order[]> {
-  const kv = await getKvClient();
-  if (kv) {
-    const orders = await kv.get<Order[]>("orders");
-    return orders || [];
+  const sb = getSupabase();
+  if (sb) {
+    const { data, error } = await sb
+      .from("orders")
+      .select("*")
+      .order("timestamp", { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapRowToOrder);
   }
-  return Array.from(inMemoryStore.values()).sort(
+  return Array.from(inMemoryOrders.values()).sort(
     (a, b) => b.timestamp - a.timestamp
   );
 }
@@ -77,13 +93,19 @@ export async function createOrder(
     timestamp: Date.now(),
   };
 
-  const kv = await getKvClient();
-  if (kv) {
-    const orders = await getOrders();
-    orders.unshift(order);
-    await kv.set("orders", orders);
+  const sb = getSupabase();
+  if (sb) {
+    const { error } = await sb.from("orders").insert({
+      id: order.id,
+      items: order.items,
+      table_number: order.table,
+      phone: order.phone,
+      status: order.status,
+      timestamp: order.timestamp,
+    });
+    if (error) throw error;
   } else {
-    inMemoryStore.set(order.id, order);
+    inMemoryOrders.set(order.id, order);
   }
 
   return order;
@@ -93,49 +115,62 @@ export async function updateOrderStatus(
   id: string,
   status: OrderStatus
 ): Promise<Order | null> {
-  const kv = await getKvClient();
-  if (kv) {
-    const orders = await getOrders();
-    const index = orders.findIndex((o) => o.id === id);
-    if (index === -1) return null;
-    orders[index].status = status;
-    await kv.set("orders", orders);
-    return orders[index];
+  const sb = getSupabase();
+  if (sb) {
+    const { data, error } = await sb
+      .from("orders")
+      .update({ status })
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error) {
+      if (error.code === "PGRST116") return null;
+      throw error;
+    }
+    return data ? mapRowToOrder(data) : null;
   }
 
-  const order = inMemoryStore.get(id);
+  const order = inMemoryOrders.get(id);
   if (!order) return null;
   order.status = status;
   return order;
 }
 
 export async function deleteOrder(id: string): Promise<boolean> {
-  const kv = await getKvClient();
-  if (kv) {
-    const orders = await getOrders();
-    const filtered = orders.filter((o) => o.id !== id);
-    await kv.set("orders", filtered);
-    return filtered.length !== orders.length;
+  const sb = getSupabase();
+  if (sb) {
+    const { error, count } = await sb
+      .from("orders")
+      .delete({ count: "exact" })
+      .eq("id", id);
+    if (error) throw error;
+    return (count ?? 0) > 0;
   }
 
-  return inMemoryStore.delete(id);
+  return inMemoryOrders.delete(id);
 }
 
 export async function getDbMenuItems(): Promise<DbMenuItem[]> {
-  const kv = await getKvClient();
-  if (kv) {
-    const items = await kv.get<DbMenuItem[]>("menu_items");
-    return items || [];
+  const sb = getSupabase();
+  if (sb) {
+    const { data, error } = await sb.from("menu_items").select("*");
+    if (error) throw error;
+    return (data || []).map(mapRowToDbItem);
   }
-  return [...inMemoryMenuStore];
+  return [...inMemoryMenuItems];
 }
 
 export async function saveDbMenuItems(items: DbMenuItem[]): Promise<void> {
-  const kv = await getKvClient();
-  if (kv) {
-    await kv.set("menu_items", items);
+  const sb = getSupabase();
+  if (sb) {
+    const dbItems = items.map(mapItemToDb);
+    const { error } = await sb.from("menu_items").upsert(dbItems, {
+      onConflict: "id",
+      ignoreDuplicates: false,
+    });
+    if (error) throw error;
   } else {
-    inMemoryMenuStore.length = 0;
-    inMemoryMenuStore.push(...items);
+    inMemoryMenuItems.length = 0;
+    inMemoryMenuItems.push(...items);
   }
 }
