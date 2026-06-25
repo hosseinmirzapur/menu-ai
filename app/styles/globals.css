@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "Shabnam";
+  src: url("/fonts/shabnam/Shabnam.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Shabnam";
+  src: url("/fonts/shabnam/Shabnam-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg-base: #0C0A09;
+  --bg-surface: #1C1917;
+  --bg-elevated: #292524;
+  --border-subtle: #3D352D;
+  --text-primary: #EDE4D8;
+  --text-secondary: #C4A88A;
+  --text-muted: #8B7355;
+  --accent-custom: #C4A88A;
+  --accent-hover: #D4B896;
+  --danger: #9F391B;
+  --success: #5A7A5A;
+}
+
+@layer base {
+  :root {
+    --background: #0C0A09;
+    --foreground: #EDE4D8;
+    --card: #1C1917;
+    --card-foreground: #EDE4D8;
+    --popover: #1C1917;
+    --popover-foreground: #EDE4D8;
+    --primary: #EDE4D8;
+    --primary-foreground: #0C0A09;
+    --secondary: #292524;
+    --secondary-foreground: #C4A88A;
+    --muted: #292524;
+    --muted-foreground: #8B7355;
+    --accent: #C4A88A;
+    --accent-foreground: #0C0A09;
+    --destructive: #9F391B;
+    --destructive-foreground: #EDE4D8;
+    --border: #3D352D;
+    --input: #3D352D;
+    --ring: #C4A88A;
+    --radius: 0.625rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); opacity: 0.15; }
+  50% { transform: translateY(-20px); opacity: 0.3; }
+}
+
+@keyframes confetti-fall {
+  0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+}
+
+.confetti-piece {
+  position: fixed;
+  width: 10px;
+  height: 10px;
+  z-index: 100;
+  pointer-events: none;
+  animation: confetti-fall 3s ease-in forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
