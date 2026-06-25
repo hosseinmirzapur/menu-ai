@@ -96,7 +96,7 @@ app/
 ├── styles/globals.css              # Tailwind, design tokens, animations
 ├── lib/
 │   ├── menu.ts                     # MenuItem type, static defaults, formatPrice
-│   ├── db.ts                       # Order + menu CRUD (Vercel KV / in-memory)
+│   ├── db.ts                       # Order + menu CRUD (Supabase / in-memory)
 │   └── utils.ts                    # cn() utility
 ├── actions/index.ts                # Server actions (admin auth)
 ├── components/
@@ -136,7 +136,7 @@ app/
 | **Styling** | Tailwind CSS v3 |
 | **Animation** | framer-motion + GSAP with ScrollTrigger |
 | **Icons** | lucide-react |
-| **Storage** | @vercel/kv (Redis) — auto fallback to in-memory |
+| **Storage** | @supabase/supabase-js (PostgreSQL) — auto fallback to in-memory |
 | **AI** | OpenAI-compatible API |
 | **Fonts** | Inter, Vazirmatn, Space Grotesk (Google Fonts) + Shabnam (self-hosted) |
 | **QR Code** | qrcode |
@@ -175,10 +175,9 @@ Access the admin dashboard at `/admin`:
 ## 🌐 Environment Variables
 
 | Variable | Required | Default | Notes |
-|---|---|---|---|
-| `KV_URL` | No | — | Vercel KV URL. Omit for in-memory mode |
-| `KV_REST_API_URL` | No | — | Vercel KV REST URL |
-| `KV_REST_API_TOKEN` | No | — | Vercel KV token |
+|---|---|---|---|---|
+| `SUPABASE_URL` | No | — | Supabase project URL. Omit for in-memory mode |
+| `SUPABASE_SERVICE_ROLE_KEY` | No | — | Supabase service role key (server-side only) |
 | `AI_BASE_URL` | No | `https://api.openai.com/v1` | Compatible provider |
 | `AI_API_KEY` | No | — | Required for AI chat |
 | `AI_MODEL` | No | `gpt-4o-mini` | Any OpenAI-compatible model |
@@ -192,7 +191,7 @@ Access the admin dashboard at `/admin`:
 ```bash
 # 1. Push your repo to GitHub
 # 2. Import to Vercel → https://vercel.com/new
-# 3. Add a KV Database (free tier is enough)
+# 3. Connect your Supabase project (or skip for in-memory mode)
 # 4. Set environment variables in Vercel dashboard
 # 5. Deploy!
 ```
@@ -200,13 +199,14 @@ Access the admin dashboard at `/admin`:
 Required environment variables for production:
 
 ```
-KV_URL=        ← from Vercel KV dashboard
-KV_REST_API_URL=      ← from Vercel KV dashboard
-KV_REST_API_TOKEN=    ← from Vercel KV dashboard
+SUPABASE_URL=         ← from Supabase project settings
+SUPABASE_SERVICE_ROLE_KEY= ← from Supabase project settings
 ADMIN_PASSWORD=       ← your chosen password
 AI_API_KEY=           ← optional, for AI chat
 NEXT_PUBLIC_BASE_URL= ← https://your-app.vercel.app
 ```
+
+Before deploying, create the database tables by running `sql/schema.sql` in the Supabase SQL Editor.
 
 ---
 

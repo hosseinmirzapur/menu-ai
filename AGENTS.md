@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Persian-first online menu and smart ordering system for cafés. Built with Next.js 14 App Router, Tailwind CSS v3, framer-motion, GSAP, and lucide-react. Data persists via Vercel KV (Redis) with an automatic in-memory fallback for local development.
+Persian-first online menu and smart ordering system for cafés. Built with Next.js 14 App Router, Tailwind CSS v3, framer-motion, GSAP, and lucide-react. Data persists via Supabase (PostgreSQL) with an automatic in-memory fallback for local development.
 
 **Brand:** Berlin Kontor — Dark Industrial European Coffee Bar
 **Vibe:** Moody, warm, intimate, textured, premium
@@ -18,7 +18,7 @@ Persian-first online menu and smart ordering system for cafés. Built with Next.
 | Styling | Tailwind CSS v3 | Utility-first CSS with custom config |
 | Animation | framer-motion + GSAP | Page/component transitions (FM), scroll-driven micro-animations (GSAP) |
 | Icons | lucide-react | Consistent vector icon system (zero emoji) |
-| Storage | @vercel/kv + in-memory Map fallback | Orders + menu items |
+| Storage | @supabase/supabase-js + in-memory Map fallback | Orders + menu items |
 | AI | OpenAI-compatible API | Smart ordering assistant |
 | Fonts | Inter, Vazirmatn, Space Grotesk (Google Fonts) + Shabnam (self-hosted) | English headings/body, Persian headings/body |
 
@@ -70,7 +70,7 @@ layout.tsx (RTL html, fonts, globals.css)
 ### Menu Items
 ```
 Static defaults (lib/menu.ts) → API GET /api/menu-items returns DB items or static fallback
-Admin creates/edits → POST/PUT /api/menu-items → saved to KV or in-memory
+Admin creates/edits → POST/PUT /api/menu-items → saved to Supabase (PostgreSQL) or in-memory
 MenuGrid fetches from GET /api/menu-items on mount → falls back to defaults
 ```
 
@@ -78,7 +78,7 @@ MenuGrid fetches from GET /api/menu-items on mount → falls back to defaults
 ```
 Customer adds items → cart in MenuGrid local state
 Customer chats → ChatModal reads cart prop
-Order confirmed → POST /api/orders → saved to KV or in-memory
+Order confirmed → POST /api/orders → saved to Supabase (PostgreSQL) or in-memory
 Admin polls GET /api/orders every 5s → updates AdminTable
 Admin updates status → PUT /api/orders/[id]
 Admin deletes → DELETE /api/orders/[id]
@@ -165,10 +165,9 @@ adminLogout() deletes cookie → redirects to /admin
 ## Environment Variables
 
 | Variable | Required | Default | Notes |
-|---|---|---|---|
-| `KV_URL` | No | — | Vercel KV URL. Omit for in-memory mode |
-| `KV_REST_API_URL` | No | — | Vercel KV REST URL |
-| `KV_REST_API_TOKEN` | No | — | Vercel KV token |
+|---|---|---|---|---|
+| `SUPABASE_URL` | No | — | Supabase project URL. Omit for in-memory mode |
+| `SUPABASE_SERVICE_ROLE_KEY` | No | — | Supabase service role key (server-side only) |
 | `AI_BASE_URL` | No | `https://api.openai.com/v1` | OpenAI or compatible |
 | `AI_API_KEY` | No | — | Required for AI chat to work |
 | `AI_MODEL` | No | `gpt-4o-mini` | Any OpenAI-compatible model |
@@ -245,4 +244,4 @@ npm run start         # Production server
 - **No external images:** Unsplash/Pexels blocked in Iran. All visuals use CSS gradients.
 - **shadcn v4 incompatible:** Tailwind v3 + shadcn v4 don't work together. Custom primitives in `components/ui/` replace shadcn.
 - **Cart state is local:** Cart lives in `MenuGrid` and is lifted to `page.tsx`. It does not persist across page refreshes.
-- **In-memory store is volatile:** Without Vercel KV, orders and menu changes are lost on server restart.
+- **In-memory store is volatile:** Without Supabase, orders and menu changes are lost on server restart.
