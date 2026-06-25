@@ -1,0 +1,9 @@
+.next/
+node_modules/
+.superpowers/
+next-env.d.ts
+
+.env.local
+.env
+
+*.txt
