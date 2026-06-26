@@ -30,11 +30,19 @@ const RestaurantContext = createContext<RestaurantContextValue>({
 function getSlugFromHostname(): string | null {
   if (typeof window === "undefined") return null;
   const hostname = window.location.hostname;
-  const match = hostname.match(/^(.*?)\.menuchat\.vercel\.app$/);
-  if (match && match[1] !== "www") return match[1];
 
-  const localMatch = hostname.match(/^(.*?)\.localhost$/);
-  if (localMatch && localMatch[1] !== "www") return localMatch[1];
+  // Handle *.localhost
+  if (hostname.endsWith(".localhost")) {
+    const slug = hostname.slice(0, hostname.lastIndexOf(".localhost"));
+    if (slug && slug !== "www") return slug;
+  }
+
+  // Handle any subdomain of any domain (3+ dot-separated parts)
+  const parts = hostname.split(".");
+  if (parts.length >= 3) {
+    const subdomain = parts[0];
+    if (subdomain !== "www") return subdomain;
+  }
 
   return null;
 }
