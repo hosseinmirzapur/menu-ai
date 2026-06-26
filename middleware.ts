@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const ROOT_DOMAIN =
+  process.env.ROOT_DOMAIN ||
+  process.env.NEXT_PUBLIC_VERCEL_URL ||
+  "menuchat.vercel.app";
+
 export function middleware(request: NextRequest) {
   const hostname = request.headers.get("host") || "";
   const { pathname } = request.nextUrl;
@@ -9,10 +14,9 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Strip port from hostname for comparison
   const host = hostname.split(":")[0];
 
-  // Handle *.localhost:<port> for local testing
+  // Handle *.localhost for local testing
   if (host.endsWith(".localhost")) {
     const subdomain = host.slice(0, host.lastIndexOf(".localhost"));
     if (subdomain && subdomain !== "www") {
@@ -21,12 +25,12 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // Handle any subdomain of any domain (e.g. cafe-a.menuchat.vercel.app, cafe-a.menu-ai.vercel.app, etc.)
-  // A subdomain exists when there are 3+ dot-separated parts
-  const parts = host.split(".");
-  if (parts.length >= 3) {
-    const subdomain = parts[0];
-    if (subdomain !== "www") {
+  // Handle known root domain with subdomain.
+  // e.g. cafe-a.menuchat.vercel.app → rewrite to /restaurant/cafe-a
+  //      menuchat.vercel.app itself → pass through (no subdomain, no rewrite)
+  if (host.endsWith(`.${ROOT_DOMAIN}`)) {
+    const subdomain = host.slice(0, host.length - ROOT_DOMAIN.length - 1);
+    if (subdomain && subdomain !== "www") {
       const newUrl = new URL(`/restaurant/${subdomain}${pathname}`, request.url);
       return NextResponse.rewrite(newUrl);
     }
