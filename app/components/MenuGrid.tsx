@@ -151,7 +151,7 @@ export default function MenuGrid({
             className="group border rounded-xl overflow-hidden flex flex-col hover:border-[#C4A88A]/30 transition-colors"
             style={{ backgroundColor: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
           >
-            <MenuItemImage itemId={item.id} nameFa={item.nameFa} />
+            <MenuItemImage itemId={item.id} nameFa={item.nameFa} imageUrl={item.image} />
             <div className="p-3 md:p-4 flex flex-col gap-2 flex-1">
               <h3
                 className="font-headingPersian text-base md:text-lg font-bold"

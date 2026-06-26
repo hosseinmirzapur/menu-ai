@@ -1,5 +1,4 @@
-"use client";
-
+import Image from "next/image";
 import { Coffee, CakeSlice, Sandwich, Salad, Utensils } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -28,9 +27,24 @@ const ICON_MAP: Record<string, ReactNode> = {
 interface MenuItemImageProps {
   itemId: string;
   nameFa: string;
+  imageUrl?: string;
 }
 
-export default function MenuItemImage({ itemId }: MenuItemImageProps) {
+export default function MenuItemImage({ itemId, nameFa, imageUrl }: MenuItemImageProps) {
+  if (imageUrl) {
+    return (
+      <div className="relative w-full aspect-square overflow-hidden">
+        <Image
+          src={imageUrl}
+          alt={nameFa}
+          fill
+          className="object-cover"
+          sizes="(max-width: 768px) 50vw, 25vw"
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       className="relative w-full aspect-square overflow-hidden"
