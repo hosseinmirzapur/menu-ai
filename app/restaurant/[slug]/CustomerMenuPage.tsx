@@ -11,19 +11,30 @@ import MenuGrid from "@/components/MenuGrid";
 import type { CartItem } from "@/components/MenuGrid";
 import FloatingOrbs from "@/components/FloatingOrbs";
 import QRCodeDisplay from "@/components/QRCodeDisplay";
-import { RestaurantProvider, useRestaurant } from "@/lib/restaurant-context";
 
 gsap.registerPlugin(useGSAP, ScrollTrigger);
 
-const ChatModal = dynamic(() => import("@/components/ChatModal"), {
-  ssr: false,
-});
-const OrderSuccess = dynamic(() => import("@/components/OrderSuccess"), {
-  ssr: false,
-});
+const ChatModal = dynamic(() => import("@/components/ChatModal"), { ssr: false });
+const OrderSuccess = dynamic(() => import("@/components/OrderSuccess"), { ssr: false });
 
-function HomePageInner() {
-  const { restaurant, slug } = useRestaurant();
+interface RestaurantData {
+  id: string;
+  slug: string;
+  nameFa: string;
+  nameEn: string;
+  descriptionFa: string;
+  descriptionEn: string;
+  themeConfig: Record<string, string>;
+  phone: string;
+}
+
+export default function CustomerMenuPage({
+  restaurant,
+  menuItems,
+}: {
+  restaurant: RestaurantData;
+  menuItems: any[];
+}) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const headerRef = useRef<HTMLDivElement>(null);
@@ -36,35 +47,25 @@ function HomePageInner() {
       end: "+=200",
       onUpdate: (self) => {
         if (headerRef.current) {
-          const progress = self.progress;
           gsap.set(headerRef.current, {
-            opacity: 1 - progress * 0.4,
-            y: -progress * 30,
-            scale: 1 - progress * 0.02,
+            opacity: 1 - self.progress * 0.4,
+            y: -self.progress * 30,
+            scale: 1 - self.progress * 0.02,
           });
         }
       },
     });
   }, { scope: containerRef });
 
-  const handleCartChange = useCallback((items: CartItem[]) => {
-    setCart(items);
-  }, []);
-
-  const handleOrderSuccess = useCallback(() => {
-    setCart([]);
-    setShowSuccess(true);
-  }, []);
-
-  const nameFa = restaurant?.nameFa || "کافه دیجیتال";
-  const descFa = restaurant?.descriptionFa || "آیتم‌های مورد نظرت را انتخاب کن و با دستیار هوشمند سفارش بده";
+  const handleCartChange = useCallback((items: CartItem[]) => setCart(items), []);
+  const handleOrderSuccess = useCallback(() => { setCart([]); setShowSuccess(true); }, []);
 
   return (
     <main ref={containerRef} className="min-h-screen relative" style={{ backgroundColor: "var(--bg-base)" }}>
       <FloatingOrbs />
-
       <div className="relative z-10 max-w-6xl mx-auto px-4 py-8 md:py-12">
-        <motion.header ref={headerRef}
+        <motion.header
+          ref={headerRef}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] as const }}
@@ -72,9 +73,7 @@ function HomePageInner() {
         >
           <div className="inline-flex items-center gap-2 bg-[#1C1917] border border-[#3D352D] rounded-full px-5 py-2 mb-5">
             <Coffee size={20} className="text-[#C4A88A]" />
-            <span className="text-sm text-[#C4A88A] font-bold">
-              {nameFa}
-            </span>
+            <span className="text-sm text-[#C4A88A] font-bold">{restaurant.nameFa}</span>
           </div>
           <h1
             className="text-4xl md:text-5xl font-bold mb-3 tracking-tight"
@@ -83,7 +82,7 @@ function HomePageInner() {
             منوی کافه
           </h1>
           <p className="text-sm md:text-base max-w-md mx-auto" style={{ color: "var(--text-muted)" }}>
-            {descFa}
+            {restaurant.descriptionFa || "آیتم‌های مورد نظرت را انتخاب کن و با دستیار هوشمند سفارش بده"}
           </p>
           <div className="mt-5 flex justify-center">
             <div className="bg-[#1C1917] border border-[#3D352D] rounded-xl p-3">
@@ -92,22 +91,12 @@ function HomePageInner() {
           </div>
         </motion.header>
 
-        <MenuGrid onCartChange={handleCartChange} restaurantSlug={slug} restaurantId={restaurant?.id} />
+        <MenuGrid onCartChange={handleCartChange} restaurantSlug={restaurant.slug} restaurantId={restaurant.id} />
       </div>
 
-      <ChatModal cart={cart} onOrderSuccess={handleOrderSuccess} restaurantSlug={slug} />
+      <ChatModal cart={cart} onOrderSuccess={handleOrderSuccess} restaurantSlug={restaurant.slug} />
 
-      {showSuccess && (
-        <OrderSuccess onClose={() => setShowSuccess(false)} />
-      )}
+      {showSuccess && <OrderSuccess onClose={() => setShowSuccess(false)} />}
     </main>
-  );
-}
-
-export default function HomePage() {
-  return (
-    <RestaurantProvider>
-      <HomePageInner />
-    </RestaurantProvider>
   );
 }
