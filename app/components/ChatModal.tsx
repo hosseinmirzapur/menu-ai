@@ -54,16 +54,10 @@ interface ChatModalProps {
   cart: CartItem[];
   onOrderSuccess: () => void;
   restaurantSlug?: string;
+  restaurantId?: string;
 }
 
-type OrderStep =
-  | "idle"
-  | "collect_table"
-  | "collect_phone"
-  | "submitting"
-  | "done";
-
-export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berlin-kontor" }: ChatModalProps) {
+export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berlin-kontor", restaurantId }: ChatModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -74,36 +68,29 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [micSupported, setMicSupported] = useState(true);
-  const [orderStep, setOrderStep] = useState<OrderStep>("idle");
-  const [tableNumber, setTableNumber] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const isBrowser = typeof window !== "undefined";
   const SpeechRecognition =
     isBrowser &&
-    ((window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition);
+    ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, streamingContent]);
 
   useEffect(() => {
-    if (!SpeechRecognition) {
-      setMicSupported(false);
-    }
+    if (!SpeechRecognition) setMicSupported(false);
   }, [SpeechRecognition]);
 
-  const totalPrice = cart.reduce(
-    (sum, c) => sum + c.menuItem.price * c.quantity,
-    0
-  );
+  const totalPrice = cart.reduce((sum, c) => sum + c.menuItem.price * c.quantity, 0);
 
   const addMessage = useCallback((msg: Message) => {
     setMessages((prev) => [...prev, msg]);
@@ -116,126 +103,89 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
       const userMsg = text.trim();
       setInput("");
       addMessage({ role: "user", content: userMsg });
-
-      const lower = userMsg.toLowerCase();
-
-      if (
-        lower.includes("confirm") ||
-        lower.includes("order") ||
-        lower.includes("تأیید") ||
-        lower.includes("سفارش") ||
-        lower.includes("ثبت")
-      ) {
-        if (cart.length === 0) {
-          addMessage({
-            role: "assistant",
-            content:
-              "🤔 سبد خریدت خالی است. لطفاً اول آیتم‌های مورد نظرت را از منو انتخاب کن.",
-          });
-          return;
-        }
-        setOrderStep("collect_table");
-        addMessage({
-          role: "assistant",
-          content: "👍 عالیه! لطفاً شماره میزت رو وارد کن (مثلاً: ۳):",
-        });
-        return;
-      }
-
-      if (orderStep === "collect_table") {
-        setTableNumber(userMsg);
-        setOrderStep("collect_phone");
-        addMessage({
-          role: "assistant",
-          content:
-            "📱 ممنون! حالا لطفاً شماره موبایلت رو وارد کن (مثلاً: ۰۹۱۲۳۴۵۶۷۸۹):",
-        });
-        return;
-      }
-
-      if (orderStep === "collect_phone") {
-        setPhoneNumber(userMsg);
-        setOrderStep("submitting");
-        addMessage({
-          role: "assistant",
-          content: "🔄 در حال ثبت سفارش... یک لحظه صبر کن.",
-        });
-        await submitOrder(tableNumber, userMsg);
-        setOrderStep("done");
-        addMessage({
-          role: "assistant",
-          content:
-            "✅ سفارش تو با موفقیت ثبت شد! آماده‌سازی شروع شده 🎉",
-        });
-        onOrderSuccess();
-        return;
-      }
-
       setIsLoading(true);
+      setStreamingContent("");
+
+      const abortController = new AbortController();
+      abortRef.current = abortController;
+
       try {
         const res = await fetch("/api/ai", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: abortController.signal,
           body: JSON.stringify({
-            messages: [...messages, { role: "user", content: userMsg }].slice(
-              -10
-            ),
+            messages: [...messages, { role: "user", content: userMsg }].slice(-10),
             restaurant_slug: restaurantSlug,
+            restaurant_id: restaurantId,
+            cart,
           }),
         });
-        const data = await res.json();
-        addMessage({
-          role: "assistant",
-          content: data.reply || "پاسخی دریافت نشد.",
-        });
-      } catch {
+
+        const reader = res.body?.getReader();
+        if (!reader) throw new Error("No response body");
+
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let accumulated = "";
+        let orderPlaced = false;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith("data: ")) continue;
+
+            const data = trimmed.slice(6).trim();
+            if (!data) continue;
+
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.reply !== undefined) {
+                accumulated = parsed.reply;
+                setStreamingContent(accumulated);
+              }
+              if (parsed.orderPlaced !== undefined) {
+                orderPlaced = parsed.orderPlaced;
+              }
+            } catch {
+              // skip malformed
+            }
+          }
+        }
+
+        if (accumulated) {
+          addMessage({ role: "assistant", content: accumulated });
+        }
+        if (orderPlaced) {
+          onOrderSuccess();
+        }
+      } catch (err: any) {
+        if (err.name === "AbortError") return;
         addMessage({
           role: "assistant",
           content: "متأسفم، خطایی رخ داد. لطفاً دوباره تلاش کن.",
         });
       } finally {
         setIsLoading(false);
+        setStreamingContent(null);
+        abortRef.current = null;
       }
     },
-    [isLoading, messages, orderStep, cart, tableNumber, phoneNumber, addMessage, onOrderSuccess, restaurantSlug]
+    [isLoading, messages, cart, addMessage, restaurantSlug, restaurantId, onOrderSuccess]
   );
-
-  const submitOrder = async (table: string, phone: string) => {
-    try {
-      const res = await fetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: cart.map((c) => ({
-            id: c.menuItem.id,
-            name: c.menuItem.nameFa,
-            nameFa: c.menuItem.nameFa,
-            nameEn: c.menuItem.nameEn,
-            price: c.menuItem.price,
-            quantity: c.quantity,
-          })),
-          table,
-          phone,
-          restaurant_slug: restaurantSlug,
-        }),
-      });
-      if (!res.ok) throw new Error("Failed to create order");
-    } catch (err) {
-      console.error("Order error:", err);
-      addMessage({
-        role: "assistant",
-        content:
-          "❌ خطا در ثبت سفارش. لطفاً دوباره تلاش کن یا با اپراتور تماس بگیر.",
-      });
-    }
-  };
 
   const toggleListening = useCallback(() => {
     if (!SpeechRecognition) {
       addMessage({
         role: "assistant",
-        content:
-          "مرورگرت از ورود صوتی پشتیبانی نمی‌کند. لطفاً متن را تایپ کن.",
+        content: "مرورگرت از ورود صوتی پشتیبانی نمی‌کند. لطفاً متن را تایپ کن.",
       });
       return;
     }
@@ -266,48 +216,25 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
         recognition.onerror = (event: any) => {
           setIsListening(false);
           if (event.error === "no-speech") {
-            addMessage({
-              role: "assistant",
-              content: "صدایی شناسایی نشد. لطفاً دوباره تلاش کن.",
-            });
+            addMessage({ role: "assistant", content: "صدایی شناسایی نشد. لطفاً دوباره تلاش کن." });
           } else if (event.error === "audio-capture") {
-            addMessage({
-              role: "assistant",
-              content: "میکروفون یافت نشد. لطفاً میکروفون را وصل کن.",
-            });
+            addMessage({ role: "assistant", content: "میکروفون یافت نشد. لطفاً میکروفون را وصل کن." });
           } else if (event.error === "not-allowed") {
-            addMessage({
-              role: "assistant",
-              content:
-                "دسترسی به میکروفون رد شد. لطفاً در تنظیمات مرورگر دسترسی را مجاز کن.",
-            });
+            addMessage({ role: "assistant", content: "دسترسی به میکروفون رد شد. لطفاً در تنظیمات مرورگر دسترسی را مجاز کن." });
           }
         };
 
-        recognition.onend = () => {
-          setIsListening(false);
-        };
+        recognition.onend = () => setIsListening(false);
 
         recognitionRef.current = recognition;
         recognition.start();
         setIsListening(true);
       })
       .catch((err) => {
-        if (
-          err.name === "NotAllowedError" ||
-          err.name === "PermissionDeniedError"
-        ) {
-          addMessage({
-            role: "assistant",
-            content:
-              "دسترسی به میکروفون رد شد. لطفاً در تنظیمات مرورگر دسترسی را مجاز کن.",
-          });
+        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+          addMessage({ role: "assistant", content: "دسترسی به میکروفون رد شد. لطفاً در تنظیمات مرورگر دسترسی را مجاز کن." });
         } else {
-          addMessage({
-            role: "assistant",
-            content:
-              "میکروفون در دسترس نیست. لطفاً متن را تایپ کن.",
-          });
+          addMessage({ role: "assistant", content: "میکروفون در دسترس نیست. لطفاً متن را تایپ کن." });
         }
       });
   }, [SpeechRecognition, isListening, addMessage, handleSendMessage]);
@@ -338,10 +265,7 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-end md:items-center md:justify-end md:p-6"
           >
-            <div
-              className="absolute inset-0 bg-black/60"
-              onClick={() => setIsOpen(false)}
-            />
+            <div className="absolute inset-0 bg-black/60" onClick={() => setIsOpen(false)} />
 
             <motion.div
               initial={{ y: "100%" }}
@@ -366,11 +290,7 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
                       {cart.reduce((s, c) => s + c.quantity, 0)}
                     </span>
                   )}
-                  <button
-                    onClick={() => setIsOpen(false)}
-                    className="hover:text-[#C4A88A] transition-colors"
-                    style={{ color: "var(--text-muted)" }}
-                  >
+                  <button onClick={() => setIsOpen(false)} className="hover:text-[#C4A88A] transition-colors" style={{ color: "var(--text-muted)" }}>
                     <X size={18} />
                   </button>
                 </div>
@@ -378,12 +298,7 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
 
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {messages.map((msg, i) => (
-                  <div
-                    key={i}
-                    className={`flex ${
-                      msg.role === "user" ? "justify-start" : "justify-end"
-                    }`}
-                  >
+                  <div key={i} className={`flex ${msg.role === "user" ? "justify-start" : "justify-end"}`}>
                     <div
                       className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed ${
                         msg.role === "user"
@@ -396,25 +311,26 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
                   </div>
                 ))}
 
-                {cart.length > 0 && orderStep === "idle" && (
+                {streamingContent !== null && (
+                  <div className="flex justify-end">
+                    <div className="max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed bg-[#292524] text-[#EDE4D8] rounded-bl-md">
+                      <MsgText content={streamingContent} />
+                      <span className="inline-block w-1.5 h-4 bg-[#C4A88A] ml-0.5 animate-pulse" />
+                    </div>
+                  </div>
+                )}
+
+                {cart.length > 0 && !isLoading && streamingContent === null && (
                   <div className="bg-[#292524] rounded-2xl p-3 text-sm">
                     <p className="font-bold text-[#C4A88A] mb-2">
                       <ShoppingCart size={16} className="inline align-middle ml-1" />
                       سبد خرید
                     </p>
                     {cart.map((c) => (
-                      <div
-                        key={c.menuItem.id}
-                        className="flex justify-between text-[#8B7355] text-xs py-1"
-                      >
-                        <span>
-                          {c.menuItem.nameFa} × {c.quantity}
-                        </span>
+                      <div key={c.menuItem.id} className="flex justify-between text-[#8B7355] text-xs py-1">
+                        <span>{c.menuItem.nameFa} × {c.quantity}</span>
                         <span dir="ltr" className="font-sans">
-                          {new Intl.NumberFormat("fa-IR").format(
-                            c.menuItem.price * c.quantity
-                          )}{" "}
-                          تومان
+                          {new Intl.NumberFormat("fa-IR").format(c.menuItem.price * c.quantity)} تومان
                         </span>
                       </div>
                     ))}
@@ -427,7 +343,7 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
                   </div>
                 )}
 
-                {isLoading && (
+                {isLoading && streamingContent === null && (
                   <div className="flex justify-end">
                     <div className="bg-[#292524] rounded-2xl rounded-bl-md p-3">
                       <span className="text-[#8B7355]">...در حال فکر کردن</span>
@@ -439,69 +355,40 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
               </div>
 
               <div className="p-3 border-t" style={{ borderColor: "var(--border-subtle)" }}>
-                {orderStep === "collect_table" || orderStep === "collect_phone" ? (
-                  <div className="flex gap-2">
-                    <input
-                      ref={inputRef}
-                      type={orderStep === "collect_phone" ? "tel" : "text"}
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      placeholder={
-                        orderStep === "collect_table"
-                          ? "شماره میز را وارد کنید..."
-                          : "شماره موبایل را وارد کنید..."
-                      }
-                      className="flex-1 border rounded-xl px-4 py-2.5 text-sm outline-none placeholder:text-[#8B7355]"
-                      style={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => handleSendMessage(input)}
-                      disabled={!input.trim()}
-                      className="px-4 py-2.5 rounded-xl text-sm font-bold border disabled:opacity-40 transition-colors"
-                      style={{ backgroundColor: "rgba(196,168,138,0.1)", color: "#C4A88A", borderColor: "rgba(196,168,138,0.2)" }}
-                    >
-                      ارسال
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={toggleListening}
-                      disabled={!micSupported}
-                      className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                        isListening
-                          ? "bg-[#9F391B] text-white animate-pulse"
-                          : !micSupported
-                          ? "bg-[#292524] text-[#5A4A3A] border border-[#3D352D] cursor-not-allowed"
-                          : "bg-[#292524] text-[#8B7355] border border-[#3D352D] hover:bg-[#3D352D]"
-                      }`}
-                      title={micSupported ? "ورود صوتی" : "مرورگر از ورود صوتی پشتیبانی نمی‌کند"}
-                    >
-                      {isListening ? <MicOff size={18} /> : <Mic size={18} />}
-                    </button>
-                    <input
-                      ref={inputRef}
-                      type="text"
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      placeholder="پیام خود را بنویسید..."
-                      className="flex-1 border rounded-xl px-4 py-2.5 text-sm outline-none placeholder:text-[#8B7355]"
-                      style={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}
-                      disabled={orderStep === "submitting" || orderStep === "done"}
-                    />
-                    <button
-                      onClick={() => handleSendMessage(input)}
-                      disabled={!input.trim() || isLoading}
-                      className="px-4 py-2.5 rounded-xl text-sm font-bold border disabled:opacity-40 transition-colors"
-                      style={{ backgroundColor: "rgba(196,168,138,0.1)", color: "#C4A88A", borderColor: "rgba(196,168,138,0.2)" }}
-                    >
-                      ارسال
-                    </button>
-                  </div>
-                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={toggleListening}
+                    disabled={!micSupported}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                      isListening
+                        ? "bg-[#9F391B] text-white animate-pulse"
+                        : !micSupported
+                        ? "bg-[#292524] text-[#5A4A3A] border border-[#3D352D] cursor-not-allowed"
+                        : "bg-[#292524] text-[#8B7355] border border-[#3D352D] hover:bg-[#3D352D]"
+                    }`}
+                    title={micSupported ? "ورود صوتی" : "مرورگر از ورود صوتی پشتیبانی نمی‌کند"}
+                  >
+                    {isListening ? <MicOff size={18} /> : <Mic size={18} />}
+                  </button>
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="پیام خود را بنویسید..."
+                    className="flex-1 border rounded-xl px-4 py-2.5 text-sm outline-none placeholder:text-[#8B7355]"
+                    style={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}
+                  />
+                  <button
+                    onClick={() => handleSendMessage(input)}
+                    disabled={!input.trim() || isLoading}
+                    className="px-4 py-2.5 rounded-xl text-sm font-bold border disabled:opacity-40 transition-colors"
+                    style={{ backgroundColor: "rgba(196,168,138,0.1)", color: "#C4A88A", borderColor: "rgba(196,168,138,0.2)" }}
+                  >
+                    ارسال
+                  </button>
+                </div>
               </div>
             </motion.div>
           </motion.div>

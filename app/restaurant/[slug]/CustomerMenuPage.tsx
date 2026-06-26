@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
+import { applyTheme } from "@/lib/restaurant-context";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -57,6 +58,10 @@ export default function CustomerMenuPage({
     });
   }, { scope: containerRef });
 
+  useEffect(() => {
+    applyTheme(restaurant.themeConfig);
+  }, [restaurant.themeConfig]);
+
   const handleCartChange = useCallback((items: CartItem[]) => setCart(items), []);
   const handleOrderSuccess = useCallback(() => { setCart([]); setShowSuccess(true); }, []);
 
@@ -91,10 +96,10 @@ export default function CustomerMenuPage({
           </div>
         </motion.header>
 
-        <MenuGrid onCartChange={handleCartChange} restaurantSlug={restaurant.slug} restaurantId={restaurant.id} />
+        <MenuGrid onCartChange={handleCartChange} restaurantSlug={restaurant.slug} restaurantId={restaurant.id} initialItems={menuItems} />
       </div>
 
-      <ChatModal cart={cart} onOrderSuccess={handleOrderSuccess} restaurantSlug={restaurant.slug} />
+      <ChatModal cart={cart} onOrderSuccess={handleOrderSuccess} restaurantSlug={restaurant.slug} restaurantId={restaurant.id} />
 
       {showSuccess && <OrderSuccess onClose={() => setShowSuccess(false)} />}
     </main>

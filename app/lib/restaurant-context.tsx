@@ -115,7 +115,7 @@ export function useRestaurant() {
   return useContext(RestaurantContext);
 }
 
-function applyTheme(theme: Record<string, string>) {
+export function applyTheme(theme: Record<string, string>) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
   const defaults: Record<string, string> = {

@@ -9,7 +9,8 @@ export async function GET(request: NextRequest) {
     const restaurantSlug = request.nextUrl.searchParams.get("slug");
 
     const dbItems = await getDbMenuItems(restaurantId || undefined);
-    const items = dbItems.length > 0 ? dbItems : (restaurantSlug ? getMenuItems(restaurantSlug) : []);
+    const isDefault = !restaurantId || restaurantId === "rest_default";
+    const items = dbItems.length > 0 ? dbItems : (isDefault && restaurantSlug ? getMenuItems(restaurantSlug) : []);
 
     return NextResponse.json({ items });
   } catch (error) {

@@ -95,7 +95,7 @@ function HomePageInner() {
         <MenuGrid onCartChange={handleCartChange} restaurantSlug={slug} restaurantId={restaurant?.id} />
       </div>
 
-      <ChatModal cart={cart} onOrderSuccess={handleOrderSuccess} restaurantSlug={slug} />
+      <ChatModal cart={cart} onOrderSuccess={handleOrderSuccess} restaurantSlug={slug} restaurantId={restaurant?.id} />
 
       {showSuccess && (
         <OrderSuccess onClose={() => setShowSuccess(false)} />

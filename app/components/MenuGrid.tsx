@@ -49,12 +49,14 @@ export default function MenuGrid({
   onCartChange,
   restaurantSlug = "berlin-kontor",
   restaurantId,
+  initialItems,
 }: {
   onCartChange?: (items: CartItem[]) => void;
   restaurantSlug?: string;
   restaurantId?: string;
+  initialItems?: MenuItem[];
 }) {
-  const [items, setItems] = useState<MenuItem[]>(() => getMenuItems(restaurantSlug));
+  const [items, setItems] = useState<MenuItem[]>(() => initialItems || getMenuItems(restaurantSlug));
   const [categories, setCategories] = useState<Category[]>([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
