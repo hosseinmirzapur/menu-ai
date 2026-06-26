@@ -2,7 +2,24 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Pencil, Trash2, X } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Plus, Pencil, Trash2, X, GripHorizontal } from "lucide-react";
 
 interface MenuFormData {
   id: string;
@@ -10,6 +27,7 @@ interface MenuFormData {
   nameEn: string;
   price: string;
   category: string;
+  sortOrder: number;
 }
 
 const emptyForm: MenuFormData = {
@@ -17,13 +35,106 @@ const emptyForm: MenuFormData = {
   nameFa: "",
   nameEn: "",
   price: "",
-  category: "نوشیدنی گرم",
+  category: "",
+  sortOrder: 0,
 };
 
-const CATEGORIES = ["نوشیدنی گرم", "نوشیدنی سرد", "دسر", "غذا", "پیش‌غذا"];
+interface CategoryOption {
+  id: string;
+  nameFa: string;
+  nameEn: string;
+}
+
+function SortableItemRow({
+  item,
+  categories,
+  onEdit,
+  onDelete,
+}: {
+  item: MenuFormData;
+  categories: CategoryOption[];
+  onEdit: (item: MenuFormData) => void;
+  onDelete: (id: string, name: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    backgroundColor: "var(--bg-elevated)",
+    borderColor: "var(--border-subtle)",
+  };
+
+  const catName = categories.find((c) => c.id === item.category)?.nameFa || item.category;
+
+  const formatPrice = (p: string) =>
+    new Intl.NumberFormat("fa-IR").format(Number(p)) + " تومان";
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-2 p-3 rounded-xl border transition-colors"
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing p-1 rounded-lg hover:bg-[#C4A88A]/10 transition-colors shrink-0"
+        style={{ color: "var(--text-muted)" }}
+      >
+        <GripHorizontal size={16} />
+      </button>
+      <div className="flex-1 min-w-0 grid grid-cols-12 gap-2 items-center">
+        <div className="col-span-3">
+          <div className="font-bold text-sm truncate" style={{ color: "var(--text-primary)" }}>
+            {item.nameFa}
+          </div>
+        </div>
+        <div className="col-span-2">
+          <span className="text-xs font-sans truncate block" style={{ color: "var(--text-muted)" }}>
+            {item.nameEn}
+          </span>
+        </div>
+        <div className="col-span-3">
+          <span
+            className="text-xs px-2 py-0.5 rounded-full inline-block"
+            style={{ backgroundColor: "var(--bg-elevated)", color: "#C4A88A", borderColor: "var(--border-subtle)" }}
+          >
+            {catName}
+          </span>
+        </div>
+        <div className="col-span-2 text-right">
+          <span className="text-xs font-bold font-sans" dir="ltr" style={{ color: "var(--text-secondary)" }}>
+            {formatPrice(item.price)}
+          </span>
+        </div>
+        <div className="col-span-2 flex items-center justify-end gap-1">
+          <button
+            onClick={() => onEdit(item)}
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:text-[#C4A88A] hover:bg-[#C4A88A]/10 transition-colors"
+            style={{ color: "var(--text-muted)" }}
+          >
+            <Pencil size={14} />
+          </button>
+          <button
+            onClick={() => onDelete(item.id, item.nameFa)}
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:text-[#9F391B] hover:bg-[#9F391B]/10 transition-colors"
+            style={{ color: "var(--text-muted)" }}
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function AdminMenuManager({ restaurantId }: { restaurantId?: string }) {
   const [items, setItems] = useState<MenuFormData[]>([]);
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -32,16 +143,30 @@ export default function AdminMenuManager({ restaurantId }: { restaurantId?: stri
 
   const rid = restaurantId || "rest_default";
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
   const fetchItems = useCallback(async () => {
     try {
       const params = new URLSearchParams();
       params.set("restaurant_id", rid);
-      const res = await fetch(`/api/menu-items?${params}`);
-      const data = await res.json();
+      const [itemsRes, catRes] = await Promise.all([
+        fetch(`/api/menu-items?${params}`),
+        fetch(`/api/categories?${params}`),
+      ]);
+      const itemsData = await itemsRes.json();
+      const catData = await catRes.json();
+      setCategories(catData.categories || []);
       setItems(
-        (data.items || []).map((i: any) => ({
-          ...i,
+        (itemsData.items || []).map((i: any) => ({
+          id: i.id,
+          nameFa: i.nameFa,
+          nameEn: i.nameEn,
           price: String(i.price),
+          category: i.categoryId || i.category || "",
+          sortOrder: i.sortOrder || 0,
         }))
       );
     } catch (err) {
@@ -57,7 +182,7 @@ export default function AdminMenuManager({ restaurantId }: { restaurantId?: stri
 
   const openAdd = () => {
     setEditingId(null);
-    setForm(emptyForm);
+    setForm({ ...emptyForm, category: categories[0]?.id || "" });
     setModalOpen(true);
   };
 
@@ -67,42 +192,29 @@ export default function AdminMenuManager({ restaurantId }: { restaurantId?: stri
     setModalOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!form.nameFa.trim() || !form.nameEn.trim() || !form.price.trim()) return;
-    if (!editingId && !form.id.trim()) return;
-
+  const saveAll = async (updated: MenuFormData[]) => {
     setSaving(true);
     try {
-      const itemToSave = {
-        id: editingId || form.id.trim(),
-        nameFa: form.nameFa.trim(),
-        nameEn: form.nameEn.trim(),
-        price: Number(form.price),
-        category: form.category,
-      };
-
-      if (editingId) {
-        const res = await fetch(`/api/menu-items/${editingId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...itemToSave, restaurant_id: rid }),
-        });
-        if (!res.ok) throw new Error("Failed to update");
-      } else {
-        const current = [...items, { ...itemToSave, price: String(itemToSave.price) }];
-        const res = await fetch("/api/menu-items", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            items: current.map((i) => ({ ...i, price: Number(i.price) })),
-            restaurant_id: rid,
-          }),
-        });
-        if (!res.ok) throw new Error("Failed to create");
+      const sorted = updated.map((item, i) => ({ ...item, sortOrder: i }));
+      const res = await fetch("/api/menu-items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: sorted.map((i) => ({
+            id: i.id,
+            nameFa: i.nameFa,
+            nameEn: i.nameEn,
+            price: Number(i.price),
+            category: i.category,
+            categoryId: i.category,
+            sortOrder: i.sortOrder,
+          })),
+          restaurant_id: rid,
+        }),
+      });
+      if (res.ok) {
+        setItems(sorted);
       }
-
-      setModalOpen(false);
-      fetchItems();
     } catch (err) {
       console.error("Save error:", err);
     } finally {
@@ -110,17 +222,60 @@ export default function AdminMenuManager({ restaurantId }: { restaurantId?: stri
     }
   };
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = items.findIndex((i) => i.id === active.id);
+    const newIndex = items.findIndex((i) => i.id === over.id);
+
+    if (oldIndex !== -1 && newIndex !== -1) {
+      const reordered = arrayMove(items, oldIndex, newIndex);
+      setItems(reordered);
+      saveAll(reordered);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!form.nameFa.trim() || !form.nameEn.trim() || !form.price.trim()) return;
+    if (!editingId && !form.id.trim()) return;
+
+    if (editingId) {
+      const updated = items.map((item) =>
+        item.id === editingId
+          ? {
+              ...item,
+              nameFa: form.nameFa.trim(),
+              nameEn: form.nameEn.trim(),
+              price: form.price,
+              category: form.category,
+            }
+          : item
+      );
+      setItems(updated);
+      setModalOpen(false);
+      await saveAll(updated);
+    } else {
+      const newItem: MenuFormData = {
+        id: form.id.trim(),
+        nameFa: form.nameFa.trim(),
+        nameEn: form.nameEn.trim(),
+        price: form.price,
+        category: form.category,
+        sortOrder: items.length,
+      };
+      const updated = [...items, newItem];
+      setItems(updated);
+      setModalOpen(false);
+      await saveAll(updated);
+    }
+  };
+
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`آیا از حذف "${name}" اطمینان دارید؟`)) return;
-    try {
-      const params = new URLSearchParams();
-      params.set("restaurant_id", rid);
-      const res = await fetch(`/api/menu-items/${id}?${params}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete");
-      fetchItems();
-    } catch (err) {
-      console.error("Delete error:", err);
-    }
+    const updated = items.filter((i) => i.id !== id);
+    setItems(updated);
+    await saveAll(updated);
   };
 
   const formatPrice = (p: string) =>
@@ -153,67 +308,36 @@ export default function AdminMenuManager({ restaurantId }: { restaurantId?: stri
         </button>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b" style={{ borderColor: "var(--border-subtle)", color: "var(--text-secondary)" }}>
-              <th className="text-right py-3 px-2 font-semibold">نام</th>
-              <th className="text-right py-3 px-2 font-semibold">English</th>
-              <th className="text-right py-3 px-2 font-semibold">دسته</th>
-              <th className="text-right py-3 px-2 font-semibold">قیمت</th>
-              <th className="text-center py-3 px-2 font-semibold">عملیات</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr
-                key={item.id}
-                className="border-b hover:bg-[#292524]/50 transition-colors"
-                style={{ borderColor: "var(--border-subtle)" }}
-              >
-                <td className="py-3 px-2 font-bold" style={{ color: "var(--text-primary)" }}>
-                  {item.nameFa}
-                </td>
-                <td className="py-3 px-2 text-xs font-sans" style={{ color: "var(--text-muted)" }}>
-                  {item.nameEn}
-                </td>
-                <td className="py-3 px-2">
-                  <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-elevated)", color: "#C4A88A" }}>
-                    {item.category}
-                  </span>
-                </td>
-                <td className="py-3 px-2 font-bold font-sans text-xs" dir="ltr" style={{ color: "var(--text-secondary)" }}>
-                  {formatPrice(item.price)}
-                </td>
-                <td className="py-3 px-2">
-                  <div className="flex items-center justify-center gap-1">
-                    <button
-                      onClick={() => openEdit(item)}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center hover:text-[#C4A88A] hover:bg-[#C4A88A]/10 transition-colors"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(item.id, item.nameFa)}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center hover:text-[#9F391B] hover:bg-[#9F391B]/10 transition-colors"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {categories.length === 0 && (
+        <div
+          className="mb-4 p-3 rounded-xl text-sm border"
+          style={{ backgroundColor: "rgba(196,168,138,0.05)", borderColor: "rgba(196,168,138,0.15)", color: "var(--text-muted)" }}
+        >
+          ابتدا در بخش "دسته‌بندی‌ها" دسته‌بندی اضافه کنید.
+        </div>
+      )}
 
-        {items.length === 0 && (
-          <div className="text-center py-12">
-            <p style={{ color: "var(--text-muted)" }}>هیچ آیتمی در منو وجود ندارد.</p>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-2">
+            {items.map((item) => (
+              <SortableItemRow
+                key={item.id}
+                item={item}
+                categories={categories}
+                onEdit={openEdit}
+                onDelete={handleDelete}
+              />
+            ))}
           </div>
-        )}
-      </div>
+        </SortableContext>
+      </DndContext>
+
+      {items.length === 0 && (
+        <div className="text-center py-12">
+          <p style={{ color: "var(--text-muted)" }}>هیچ آیتمی در منو وجود ندارد.</p>
+        </div>
+      )}
 
       <AnimatePresence>
         {modalOpen && (
@@ -328,9 +452,10 @@ export default function AdminMenuManager({ restaurantId }: { restaurantId?: stri
                         className="w-full border rounded-xl px-4 py-2.5 text-sm outline-none"
                         style={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}
                       >
-                        {CATEGORIES.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
+                        {categories.length === 0 && <option value="">بدون دسته‌بندی</option>}
+                        {categories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.nameFa} ({c.nameEn})
                           </option>
                         ))}
                       </select>

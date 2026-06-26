@@ -27,28 +27,6 @@ const RestaurantContext = createContext<RestaurantContextValue>({
   slug: "berlin-kontor",
 });
 
-function getSlugFromHostname(): string | null {
-  if (typeof window === "undefined") return null;
-  const hostname = window.location.hostname;
-  const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "menuchat.vercel.app";
-
-  // Handle *.localhost
-  if (hostname.endsWith(".localhost")) {
-    const slug = hostname.slice(0, hostname.lastIndexOf(".localhost"));
-    if (slug && slug !== "www") return slug;
-  }
-
-  // Handle known root domain with subdomain.
-  // e.g. cafe-a.menuchat.vercel.app → "cafe-a"
-  //      menuchat.vercel.app itself → null (no subdomain, use default)
-  if (hostname.endsWith(`.${rootDomain}`)) {
-    const subdomain = hostname.slice(0, hostname.length - rootDomain.length - 1);
-    if (subdomain && subdomain !== "www") return subdomain;
-  }
-
-  return null;
-}
-
 function getSlugFromPath(): string | null {
   if (typeof window === "undefined") return null;
   const path = window.location.pathname;
@@ -58,9 +36,6 @@ function getSlugFromPath(): string | null {
 }
 
 function determineSlug(): string {
-  const fromHostname = getSlugFromHostname();
-  if (fromHostname) return fromHostname;
-
   const fromPath = getSlugFromPath();
   if (fromPath) return fromPath;
 

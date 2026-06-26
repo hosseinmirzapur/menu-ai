@@ -264,6 +264,17 @@ export async function saveCategories(restaurantId: string, categories: MenuCateg
   }
 }
 
+export async function deleteCategory(restaurantId: string, categoryId: string): Promise<boolean> {
+  const sb = getSupabase();
+  if (sb) {
+    const { error, count } = await sb.from("menu_categories").delete({ count: "exact" })
+      .eq("id", categoryId).eq("restaurant_id", restaurantId);
+    if (error) throw error;
+    return (count ?? 0) > 0;
+  }
+  return inMemoryCategories.delete(categoryId);
+}
+
 // ─── Menu Items (multi-restaurant) ──────────────────────────────────
 
 export async function getDbMenuItems(restaurantId?: string): Promise<DbMenuItem[]> {

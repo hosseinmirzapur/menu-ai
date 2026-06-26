@@ -190,7 +190,8 @@ export default function RestaurantManager() {
       ) : (
         <div className="grid gap-3">
           {restaurants.map((r) => {
-            const subdomainUrl = `https://${r.slug}.menuchat.vercel.app`;
+            const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
+            const pathUrl = `${baseUrl}/restaurant/${r.slug}`;
             return (
               <div
                 key={r.id}
@@ -223,12 +224,12 @@ export default function RestaurantManager() {
                   </div>
                   <div className="flex items-center gap-2">
                     <a
-                      href={subdomainUrl}
+                      href={pathUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-8 h-8 rounded-lg flex items-center justify-center hover:text-[#C4A88A] hover:bg-[#C4A88A]/10 transition-colors"
                       style={{ color: "var(--text-muted)" }}
-                      title={subdomainUrl}
+                      title={pathUrl}
                     >
                       <Globe size={14} />
                     </a>

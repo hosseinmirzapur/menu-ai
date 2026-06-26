@@ -6,11 +6,12 @@ import { cafeLogout } from "@/actions/cafe-auth";
 import AdminTable from "@/components/AdminTable";
 import AdminMenuManager from "@/components/AdminMenuManager";
 import ThemeCustomizer from "@/components/ThemeCustomizer";
+import AdminCategoryManager from "@/components/AdminCategoryManager";
 import QRCodeDisplay from "@/components/QRCodeDisplay";
 import { motion } from "framer-motion";
 import { Coffee, Palette, Store, LogOut, Globe } from "lucide-react";
 
-type Tab = "orders" | "menu" | "theme";
+type Tab = "orders" | "menu" | "categories" | "theme";
 
 interface RestaurantInfo {
   id: string;
@@ -82,7 +83,8 @@ export default function CafeDashboardPage() {
   if (!restaurant) return null;
 
   const cafeSlug = restaurant.slug;
-  const subdomainUrl = `https://${cafeSlug}.menuchat.vercel.app`;
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
+  const pathUrl = `${baseUrl}/restaurant/${cafeSlug}`;
 
   return (
     <main className="min-h-screen relative" style={{ backgroundColor: "var(--bg-base)" }}>
@@ -122,10 +124,10 @@ export default function CafeDashboardPage() {
           <div className="flex flex-wrap items-center gap-2 mt-4">
             <div className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg" style={{ backgroundColor: "var(--bg-elevated)", color: "var(--text-muted)" }}>
               <Globe size={12} />
-              <span dir="ltr">{subdomainUrl}</span>
+              <span dir="ltr">{pathUrl}</span>
             </div>
             <a
-              href={subdomainUrl}
+              href={pathUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs px-3 py-1.5 rounded-lg font-bold transition-colors"
@@ -136,7 +138,7 @@ export default function CafeDashboardPage() {
           </div>
         </div>
 
-        <div className="flex gap-1 mb-4 border rounded-xl p-1 w-fit"
+        <div className="flex gap-1 mb-4 border rounded-xl p-1 overflow-x-auto w-full"
           style={{ backgroundColor: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
         >
           <button
@@ -156,8 +158,16 @@ export default function CafeDashboardPage() {
             مدیریت منو
           </button>
           <button
+            onClick={() => setTab("categories")}
+            className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-colors ${
+              tab === "categories" ? "bg-[#C4A88A] text-[#0C0A09]" : "text-[#8B7355] hover:text-[#C4A88A]"
+            }`}
+          >
+            دسته‌بندی‌ها
+          </button>
+          <button
             onClick={() => setTab("theme")}
-            className={`px-5 py-2 rounded-lg text-sm font-bold transition-colors ${
+            className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-colors ${
               tab === "theme" ? "bg-[#C4A88A] text-[#0C0A09]" : "text-[#8B7355] hover:text-[#C4A88A]"
             }`}
           >
@@ -171,6 +181,7 @@ export default function CafeDashboardPage() {
           >
             {tab === "orders" && <AdminTable restaurantId={restaurant.id} />}
             {tab === "menu" && <AdminMenuManager restaurantId={restaurant.id} />}
+            {tab === "categories" && <AdminCategoryManager restaurantId={restaurant.id} />}
             {tab === "theme" && (
               <div className="space-y-4">
                 <div>

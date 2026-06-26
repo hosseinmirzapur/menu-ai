@@ -4,11 +4,12 @@ import { useState, useEffect } from "react";
 import { adminLogout } from "@/actions/index";
 import AdminTable from "@/components/AdminTable";
 import AdminMenuManager from "@/components/AdminMenuManager";
+import AdminCategoryManager from "@/components/AdminCategoryManager";
 import RestaurantManager from "@/components/RestaurantManager";
 import QRCodeDisplay from "@/components/QRCodeDisplay";
 import { Store, Globe, Coffee, TrendingUp, Users } from "lucide-react";
 
-type Tab = "overview" | "orders" | "menu" | "restaurants";
+type Tab = "overview" | "orders" | "menu" | "categories" | "restaurants";
 
 interface RestaurantInfo {
   id: string;
@@ -109,7 +110,8 @@ export default function AdminDashboardClient() {
             <div className="grid gap-2">
               {restaurants.map((r) => {
                 const orderCount = allOrders.filter((o) => o.restaurantId === r.id).length;
-                const subdomainUrl = `https://${r.slug}.menuchat.vercel.app`;
+                const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "";
+                const pathUrl = `${baseUrl}/restaurant/${r.slug}`;
                 return (
                   <div
                     key={r.id}
@@ -131,7 +133,7 @@ export default function AdminDashboardClient() {
                     </div>
                     <div className="flex items-center gap-2">
                       <a
-                        href={subdomainUrl}
+                        href={pathUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-colors"
@@ -163,6 +165,10 @@ export default function AdminDashboardClient() {
 
     if (tab === "menu") {
       return <AdminMenuManager restaurantId={selectedRestaurantId} />;
+    }
+
+    if (tab === "categories") {
+      return <AdminCategoryManager restaurantId={selectedRestaurantId} />;
     }
 
     if (tab === "restaurants") {
@@ -231,7 +237,7 @@ export default function AdminDashboardClient() {
           )}
         </div>
 
-        <div className="flex gap-1 mb-4 border rounded-xl p-1 w-fit"
+        <div className="flex gap-1 mb-4 border rounded-xl p-1 overflow-x-auto w-full"
           style={{ backgroundColor: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
         >
           <button
@@ -265,8 +271,18 @@ export default function AdminDashboardClient() {
             مدیریت منو
           </button>
           <button
+            onClick={() => setTab("categories")}
+            className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-colors ${
+              tab === "categories"
+                ? "bg-[#C4A88A] text-[#0C0A09]"
+                : "text-[#8B7355] hover:text-[#C4A88A]"
+            }`}
+          >
+            دسته‌بندی‌ها
+          </button>
+          <button
             onClick={() => setTab("restaurants")}
-            className={`px-5 py-2 rounded-lg text-sm font-bold transition-colors ${
+            className={`px-5 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-colors ${
               tab === "restaurants"
                 ? "bg-[#C4A88A] text-[#0C0A09]"
                 : "text-[#8B7355] hover:text-[#C4A88A]"
