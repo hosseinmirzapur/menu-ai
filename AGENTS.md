@@ -2,10 +2,10 @@
 
 ## Project Overview
 
-Persian-first online menu and smart ordering system for cafés. Built with Next.js 14 App Router, Tailwind CSS v3, framer-motion, GSAP, and lucide-react. Data persists via Supabase (PostgreSQL) with an automatic in-memory fallback for local development.
+Persian-first multi-tenant online menu and smart ordering platform for cafés and restaurants. Built with Next.js 14 App Router, Tailwind CSS v3, framer-motion, GSAP, and lucide-react. Data persists via Supabase (PostgreSQL) with an automatic in-memory fallback for local development. Supports multiple restaurants with per-restaurant theming, menus, and orders.
 
-**Brand:** Berlin Kontor — Dark Industrial European Coffee Bar
-**Vibe:** Moody, warm, intimate, textured, premium
+**Brand:** Berlin Kontor — Dark Industrial European Coffee Bar (default)
+**Vibe:** Moody, warm, intimate, textured, premium (per-restaurant theming via CSS variables)
 
 ---
 
@@ -15,51 +15,60 @@ Persian-first online menu and smart ordering system for cafés. Built with Next.
 |---|---|---|
 | Framework | Next.js 14 (App Router) | Routing, SSR, server actions |
 | Language | TypeScript 5 | Type safety |
-| Styling | Tailwind CSS v3 | Utility-first CSS with custom config |
+| Styling | Tailwind CSS v3 | Utility-first CSS with custom config + CSS variables for theming |
 | Animation | framer-motion + GSAP | Page/component transitions (FM), scroll-driven micro-animations (GSAP) |
 | Icons | lucide-react | Consistent vector icon system (zero emoji) |
-| Storage | @supabase/supabase-js + in-memory Map fallback | Orders + menu items |
-| AI | OpenAI-compatible API | Smart ordering assistant |
+| Storage | @supabase/supabase-js + in-memory Map fallback | Multi-tenant: restaurants, orders, menu items, categories |
+| AI | OpenAI-compatible API + agent kit | Smart ordering assistant per restaurant |
 | Fonts | Inter, Vazirmatn, Space Grotesk (Google Fonts) + Shabnam (self-hosted) | English headings/body, Persian headings/body |
 
 ---
 
-## Architecture Decisions
+## Multi-Tenant Architecture
 
-### Custom UI Primitives Over shadcn/ui
-shadcn/ui v4 depends on `@base-ui/react` and Tailwind v4 syntax, which are incompatible with our Tailwind v3 setup. Custom `Button` and `Badge` primitives live in `app/components/ui/` — they're cleaner, lighter, and exactly match the Berlin Kontor palette.
+### Data Model
+- **Restaurants** — Each restaurant has its own slug, name (fa/en), theme config, business hours
+- **Menu Items** — Scoped to restaurant_id; fallback to static defaults per slug
+- **Orders** — Scoped to restaurant_id; include table, phone, customer name, order type
+- **Menu Categories** — Scoped to restaurant_id with sort ordering
 
-### CSS Gradients as Images
-Google Fonts, Unsplash, and Pixabay are blocked in Iran. All menu item "images" are CSS gradients (conic, radial, linear) with geometric overlay patterns — no external image dependencies. `MenuItemImage` handles this per-item.
+### API Scoping
+All endpoints accept `restaurant_id` query param or body field:
+- `GET /api/menu-items?restaurant_id=xxx` — menu for a specific restaurant
+- `GET /api/orders?restaurant_id=xxx` — orders for a specific restaurant
+- `POST /api/orders` with `restaurant_id` — create order for a restaurant
+- `POST /api/ai` with `restaurant_slug` — context-aware AI chat per restaurant
 
-### Self-Hosted Shabnam Font
-Google Fonts blocked in Iran. Shabnam (Persian heading font) is downloaded from jsDelivr CDN and self-hosted in `public/fonts/shabnam/` as woff2.
+### Frontend Restaurant Context
+`RestaurantProvider` (in `lib/restaurant-context.tsx`) wraps the customer page. It:
+- Reads restaurant slug from URL path
+- Fetches restaurant info from `/api/restaurants/[slug]`
+- Applies per-restaurant theme CSS variables to `<html>`
+- Passes restaurant context to MenuGrid, ChatModal, etc.
 
-### Cart State Flow
-Cart `useState` lives inside `MenuGrid` component. Changes are lifted to `page.tsx` via `onCartChange` callback so `ChatModal` can access cart data for order submission.
-
-### RTL First
-All layouts designed for right-to-left (Persian) reading. LTR only for English names and price formatting.
+### Admin Dashboard
+Dashboard shows a restaurant switcher when multiple restaurants exist. Orders, menu, and restaurant management tabs are all scoped to the selected restaurant.
 
 ---
 
 ## Component Tree
 
 ```
-layout.tsx (RTL html, fonts, globals.css)
-├── page.tsx (customer menu)
+layout.tsx (RTL html, fonts, globals.css with CSS variable theming)
+├── page.tsx (customer menu — wrapped in RestaurantProvider)
 │   ├── FloatingOrbs (background decoration)
-│   ├── MenuGrid (menu items + cart state)
+│   ├── MenuGrid (menu items + cart state, scoped to restaurant)
 │   │   ├── MenuItemImage (CSS gradient per item)
 │   │   └── CartSheet (mobile slide-up / desktop drawer)
-│   ├── ChatModal (AI assistant with ordering flow)
+│   ├── ChatModal (AI assistant with ordering flow, scoped to restaurant)
 │   └── OrderSuccess (confetti animation)
 │
 ├── admin/page.tsx (login form)
 │
 ├── admin/dashboard/page.tsx → AdminDashboardClient
-│   ├── AdminTable (order management)
-│   ├── AdminMenuManager (menu item CRUD)
+│   ├── AdminTable (order management, scoped to restaurant)
+│   ├── AdminMenuManager (menu item CRUD, scoped to restaurant)
+│   ├── RestaurantManager (multi-restaurant CRUD)
 │   └── QRCodeDisplay
 ```
 
@@ -67,21 +76,26 @@ layout.tsx (RTL html, fonts, globals.css)
 
 ## Data Flow
 
+### Restaurants
+```
+Static default (lib/db.ts ensureDefaultRestaurant) → API GET /api/restaurants
+Admin creates → POST /api/restaurants → saved to DB or in-memory
+Customer accesses → URL slug → GET /api/restaurants/[slug] → applies theme
+```
+
 ### Menu Items
 ```
-Static defaults (lib/menu.ts) → API GET /api/menu-items returns DB items or static fallback
-Admin creates/edits → POST/PUT /api/menu-items → saved to Supabase (PostgreSQL) or in-memory
-MenuGrid fetches from GET /api/menu-items on mount → falls back to defaults
+Static defaults (lib/menu.ts, per-slug) → API GET /api/menu-items returns DB items or fallback
+Admin creates/edits → POST/PUT /api/menu-items with restaurant_id → scoped save
+MenuGrid fetches with restaurant_id param → falls back to slug-based defaults
 ```
 
 ### Orders
 ```
 Customer adds items → cart in MenuGrid local state
-Customer chats → ChatModal reads cart prop
-Order confirmed → POST /api/orders → saved to Supabase (PostgreSQL) or in-memory
-Admin polls GET /api/orders every 5s → updates AdminTable
-Admin updates status → PUT /api/orders/[id]
-Admin deletes → DELETE /api/orders/[id]
+Customer chats → ChatModal reads cart prop, sends restaurant_slug to AI
+Order confirmed → POST /api/orders with restaurant_id → saved scoped to restaurant
+Admin polls GET /api/orders with restaurant_id every 5s → updates AdminTable
 ```
 
 ### Authentication
@@ -98,21 +112,42 @@ adminLogout() deletes cookie → redirects to /admin
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/orders` | List all orders (newest first) |
-| POST | `/api/orders` | Create order (items, table, phone) |
-| PUT | `/api/orders/[id]` | Update order status |
-| DELETE | `/api/orders/[id]` | Delete order |
-| GET | `/api/menu-items` | List menu items (DB → static fallback) |
-| POST | `/api/menu-items` | Save full menu items array |
+| GET | `/api/restaurants` | List all restaurants |
+| POST | `/api/restaurants` | Create a restaurant |
+| GET | `/api/restaurants/[slug]` | Get restaurant + menu items + orders |
+| PUT | `/api/restaurants/[slug]` | Update restaurant info/theme |
+| GET | `/api/orders?restaurant_id=` | List orders (scoped) |
+| POST | `/api/orders` | Create order (with restaurant_id) |
+| PUT | `/api/orders/[id]` | Update order status (with restaurant_id) |
+| DELETE | `/api/orders/[id]` | Delete order (with restaurant_id) |
+| GET | `/api/menu-items?restaurant_id=&slug=` | List menu items (DB → static fallback) |
+| POST | `/api/menu-items` | Save menu items (with restaurant_id) |
 | PUT | `/api/menu-items/[id]` | Update single menu item |
 | DELETE | `/api/menu-items/[id]` | Delete menu item |
-| POST | `/api/ai` | Chat with AI assistant |
+| POST | `/api/ai` | Chat with AI assistant (with restaurant_slug) |
 
 ---
 
-## Design Tokens
+## AI Agent System
 
-### Colors
+### Agent Kit (`lib/agent/`)
+- **kit.ts** — `buildAgentKit(restaurant, menuItems)` builds context (name, hours, menu). `buildSystemPrompt(kit)` generates a Persian system prompt with restaurant personality.
+- **sanitize.ts** — Input sanitization: `sanitizeMessage`, `sanitizePhone`, `sanitizeTableNumber`, `sanitizeOrderNotes` prevent XSS and injection.
+- **index.ts** — Re-exports everything.
+
+### AI Chat Flow
+1. `POST /api/ai` receives `{ messages, restaurant_slug }`
+2. Server fetches restaurant + menu items for context
+3. `buildAgentKit()` creates full context (menu, hours, name)
+4. `buildSystemPrompt()` generates Persian system prompt with restaurant personality
+5. Without API key: returns a helpful self-service message with menu info
+6. With API key: sends to OpenAI-compatible API with sanitized messages
+
+---
+
+## Design Tokens (Default Theme — Berlin Kontor)
+
+### Colors (CSS Variables, overridable per restaurant)
 ```css
 --bg-base:        #0C0A09   (page background)
 --bg-surface:     #1C1917   (cards, panels)
@@ -125,6 +160,9 @@ adminLogout() deletes cookie → redirects to /admin
 --success:        #5A7A5A
 ```
 
+### Per-Restaurant Theming
+Each restaurant has a `themeConfig` JSONB field in the database. When loaded, its values override the CSS variables on `<html>`. Default values are used if a variable is not specified.
+
 ### Typography
 | Role | English Font | Persian Font |
 |---|---|---|
@@ -132,28 +170,30 @@ adminLogout() deletes cookie → redirects to /admin
 | Body | Inter (google) | Vazirmatn (google) |
 | Numbers | Inter | Inter |
 
-### Motion
-- **Easing:** `cubic-bezier(0.16, 1, 0.3, 1)` — custom ease-out-expo
-- **Entrances:** 0.4s via framer-motion
-- **Micro-interactions:** 0.2s
-- **GSAP scroll:** ScrollTrigger with scrub
-- **Reduced motion:** `prefers-reduced-motion` respected globally
-
 ---
 
 ## Key Patterns
 
 ### Adding a New Component
 1. Create in `app/components/` with `"use client"` only if needed
-2. Use Tailwind utility classes with Berlin Kontor palette tokens (`bg-[#1C1917]`, `text-[#C4A88A]`, etc.)
+2. Use CSS variable colors: `style={{ backgroundColor: "var(--bg-surface)" }}`
 3. Import lucide-react for icons; never use emoji
 4. Use framer-motion for entrance/exit animations
-5. Use useGSAP hook for scroll-driven animations (import from `@gsap/react`)
 
 ### Adding a New Menu Item
 1. In admin dashboard → "مدیریت منو" tab → "افزودن آیتم"
 2. Provide slug (unique id), Persian name, English name, price, category
-3. For a custom gradient background, add an entry in `MenuItemImage.tsx` `GRADIENTS` record
+3. Items are saved scoped to the selected restaurant
+
+### Adding a New Restaurant
+1. In admin dashboard → "رستوران‌ها" tab → "افزودن رستوران"
+2. Provide slug, Persian name, English name, description, phone
+3. Restaurant appears in the rest of the UI immediately
+
+### Extending the Agent
+1. Update `lib/agent/kit.ts` to add more context to the system prompt
+2. Update `sanitize.ts` if new input types need sanitization
+3. The AI route auto-loads restaurant context
 
 ### Error Handling
 - API routes return `{ error: "message" }` with appropriate status codes
@@ -165,7 +205,7 @@ adminLogout() deletes cookie → redirects to /admin
 ## Environment Variables
 
 | Variable | Required | Default | Notes |
-|---|---|---|---|---|
+|---|---|---|---|
 | `SUPABASE_URL` | No | — | Supabase project URL. Omit for in-memory mode |
 | `SUPABASE_SERVICE_ROLE_KEY` | No | — | Supabase service role key (server-side only) |
 | `AI_BASE_URL` | No | `https://api.openai.com/v1` | OpenAI or compatible |
@@ -191,40 +231,51 @@ npm run start         # Production server
 
 ```
 ├── app/
-│   ├── page.tsx                    # Customer menu page (client)
+│   ├── page.tsx                    # Customer menu page (wrapped in RestaurantProvider)
 │   ├── layout.tsx                  # RTL root layout + fonts
-│   ├── styles/globals.css          # Tailwind + design tokens + animations
+│   ├── styles/globals.css          # Tailwind + CSS variable theming + animations
 │   ├── lib/
-│   │   ├── menu.ts                 # MenuItem type + static defaults + formatPrice
-│   │   ├── db.ts                   # Order + menu CRUD (KV → in-memory)
-│   │   └── utils.ts                # cn() utility
+│   │   ├── db.ts                   # Multi-tenant CRUD (restaurants, orders, menu items)
+│   │   ├── menu.ts                 # MenuItem type + per-slug static defaults + formatPrice
+│   │   ├── restaurant-context.tsx  # RestaurantProvider + useRestaurant hook
+│   │   ├── supabase.ts             # Supabase client factory
+│   │   ├── utils.ts                # cn() utility
+│   │   └── agent/
+│   │       ├── index.ts            # Agent re-exports
+│   │       ├── kit.ts              # buildAgentKit, buildSystemPrompt
+│   │       └── sanitize.ts         # Input sanitization utilities
 │   ├── actions/index.ts            # Server actions (adminLogin, adminLogout, checkAdminAuth)
 │   ├── components/
-│   │   ├── MenuGrid.tsx            # Item grid + cart local state + cart bar
+│   │   ├── MenuGrid.tsx            # Item grid + cart (restaurant-scoped)
 │   │   ├── MenuItemImage.tsx       # CSS gradient image per item
 │   │   ├── CartSheet.tsx           # Cart drawer (mobile/desktop responsive)
-│   │   ├── ChatModal.tsx           # AI chat + ordering flow + voice input
+│   │   ├── ChatModal.tsx           # AI chat + ordering flow + voice input (restaurant-aware)
 │   │   ├── OrderSuccess.tsx        # Confetti success overlay
 │   │   ├── FloatingOrbs.tsx        # Background animated orbs
 │   │   ├── QRCodeDisplay.tsx       # QR code component
-│   │   ├── AdminTable.tsx          # Orders table (dashboard)
-│   │   ├── AdminMenuManager.tsx    # Menu CRUD (dashboard)
+│   │   ├── AdminTable.tsx          # Orders table (restaurant-scoped)
+│   │   ├── AdminMenuManager.tsx    # Menu CRUD (restaurant-scoped)
+│   │   ├── RestaurantManager.tsx   # Multi-restaurant CRUD
 │   │   └── ui/
 │   │       ├── button.tsx          # Custom Button primitive
 │   │       └── badge.tsx           # Custom Badge primitive
 │   ├── api/
-│   │   ├── orders/route.ts         # GET list / POST create
-│   │   ├── orders/[id]/route.ts    # PUT status / DELETE
-│   │   ├── menu-items/route.ts     # GET list / POST save
-│   │   ├── menu-items/[id]/route.ts # PUT update / DELETE
-│   │   └── ai/route.ts             # AI chat proxy
+│   │   ├── restaurants/route.ts    # GET list / POST create
+│   │   ├── restaurants/[slug]/route.ts  # GET / PUT restaurant
+│   │   ├── orders/route.ts         # GET list / POST create (scoped)
+│   │   ├── orders/[id]/route.ts    # PUT status / DELETE (scoped)
+│   │   ├── menu-items/route.ts     # GET list / POST save (scoped)
+│   │   ├── menu-items/[id]/route.ts # PUT update / DELETE (scoped)
+│   │   └── ai/route.ts             # AI chat proxy (restaurant-aware)
 │   └── admin/
 │       ├── page.tsx                # Login page
 │       └── dashboard/
 │           ├── page.tsx            # Server wrapper (auth check)
-│           └── AdminDashboardClient.tsx  # Tabbed dashboard client
+│           └── AdminDashboardClient.tsx  # Tabbed dashboard with restaurant mgmt
 ├── public/fonts/shabnam/           # Self-hosted Shabnam (woff2)
+├── sql/schema.sql                  # Full multi-tenant schema
 ├── AGENTS.md
+├── ARCHITECTURE.md
 ├── DESIGN.md
 ├── README.md
 ├── tailwind.config.ts
@@ -244,4 +295,6 @@ npm run start         # Production server
 - **No external images:** Unsplash/Pexels blocked in Iran. All visuals use CSS gradients.
 - **shadcn v4 incompatible:** Tailwind v3 + shadcn v4 don't work together. Custom primitives in `components/ui/` replace shadcn.
 - **Cart state is local:** Cart lives in `MenuGrid` and is lifted to `page.tsx`. It does not persist across page refreshes.
-- **In-memory store is volatile:** Without Supabase, orders and menu changes are lost on server restart.
+- **In-memory store is volatile:** Without Supabase, restaurants, orders, and menu changes are lost on server restart.
+- **CSS variable theming:** Each restaurant's `themeConfig` overrides CSS variables on the `<html>` element via `applyTheme()`. This means components use `var(--bg-surface)` etc. instead of hardcoded Tailwind classes like `bg-[#1C1917]`. For colors outside the standard palette, use Tailwind classes directly.
+- **Multi-tenant scoping:** All database operations require `restaurant_id` to scope data correctly. The admin dashboard picks the restaurant context.

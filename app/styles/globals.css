@@ -34,25 +34,25 @@
 
 @layer base {
   :root {
-    --background: #0C0A09;
-    --foreground: #EDE4D8;
-    --card: #1C1917;
-    --card-foreground: #EDE4D8;
-    --popover: #1C1917;
-    --popover-foreground: #EDE4D8;
-    --primary: #EDE4D8;
-    --primary-foreground: #0C0A09;
-    --secondary: #292524;
-    --secondary-foreground: #C4A88A;
-    --muted: #292524;
-    --muted-foreground: #8B7355;
-    --accent: #C4A88A;
-    --accent-foreground: #0C0A09;
-    --destructive: #9F391B;
-    --destructive-foreground: #EDE4D8;
-    --border: #3D352D;
-    --input: #3D352D;
-    --ring: #C4A88A;
+    --background: var(--bg-base);
+    --foreground: var(--text-primary);
+    --card: var(--bg-surface);
+    --card-foreground: var(--text-primary);
+    --popover: var(--bg-surface);
+    --popover-foreground: var(--text-primary);
+    --primary: var(--text-primary);
+    --primary-foreground: var(--bg-base);
+    --secondary: var(--bg-elevated);
+    --secondary-foreground: var(--text-secondary);
+    --muted: var(--bg-elevated);
+    --muted-foreground: var(--text-muted);
+    --accent: var(--text-secondary);
+    --accent-foreground: var(--bg-base);
+    --destructive: var(--danger);
+    --destructive-foreground: var(--text-primary);
+    --border: var(--border-subtle);
+    --input: var(--border-subtle);
+    --ring: var(--text-secondary);
     --radius: 0.625rem;
   }
 
