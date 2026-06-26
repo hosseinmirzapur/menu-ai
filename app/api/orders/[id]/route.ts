@@ -7,17 +7,17 @@ export async function PUT(
 ) {
   try {
     const body = await request.json();
-    const { status } = body;
+    const { status, restaurant_id } = body;
 
-    const validStatuses = ["pending", "preparing", "ready", "served"];
+    const validStatuses = ["pending", "confirmed", "preparing", "ready", "served", "cancelled"];
     if (!status || !validStatuses.includes(status)) {
       return NextResponse.json(
-        { error: "Invalid status. Must be: pending, preparing, ready, or served" },
+        { error: "Invalid status. Must be: pending, confirmed, preparing, ready, served, or cancelled" },
         { status: 400 }
       );
     }
 
-    const order = await updateOrderStatus(params.id, status);
+    const order = await updateOrderStatus(params.id, status, restaurant_id || undefined);
     if (!order) {
       return NextResponse.json(
         { error: "سفارش یافت نشد" },
@@ -36,11 +36,12 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const deleted = await deleteOrder(params.id);
+    const restaurantId = request.nextUrl.searchParams.get("restaurant_id") || undefined;
+    const deleted = await deleteOrder(params.id, restaurantId);
     if (!deleted) {
       return NextResponse.json(
         { error: "سفارش یافت نشد" },

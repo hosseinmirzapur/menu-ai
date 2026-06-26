@@ -53,6 +53,7 @@ interface Message {
 interface ChatModalProps {
   cart: CartItem[];
   onOrderSuccess: () => void;
+  restaurantSlug?: string;
 }
 
 type OrderStep =
@@ -62,7 +63,7 @@ type OrderStep =
   | "submitting"
   | "done";
 
-export default function ChatModal({ cart, onOrderSuccess }: ChatModalProps) {
+export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berlin-kontor" }: ChatModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -179,6 +180,7 @@ export default function ChatModal({ cart, onOrderSuccess }: ChatModalProps) {
             messages: [...messages, { role: "user", content: userMsg }].slice(
               -10
             ),
+            restaurant_slug: restaurantSlug,
           }),
         });
         const data = await res.json();
@@ -195,7 +197,7 @@ export default function ChatModal({ cart, onOrderSuccess }: ChatModalProps) {
         setIsLoading(false);
       }
     },
-    [isLoading, messages, orderStep, cart, tableNumber, phoneNumber, addMessage, onOrderSuccess]
+    [isLoading, messages, orderStep, cart, tableNumber, phoneNumber, addMessage, onOrderSuccess, restaurantSlug]
   );
 
   const submitOrder = async (table: string, phone: string) => {
@@ -206,12 +208,15 @@ export default function ChatModal({ cart, onOrderSuccess }: ChatModalProps) {
         body: JSON.stringify({
           items: cart.map((c) => ({
             id: c.menuItem.id,
-            name: `${c.menuItem.nameFa} (${c.menuItem.nameEn})`,
+            name: c.menuItem.nameFa,
+            nameFa: c.menuItem.nameFa,
+            nameEn: c.menuItem.nameEn,
             price: c.menuItem.price,
             quantity: c.quantity,
           })),
           table,
           phone,
+          restaurant_slug: restaurantSlug,
         }),
       });
       if (!res.ok) throw new Error("Failed to create order");
@@ -318,10 +323,11 @@ export default function ChatModal({ cart, onOrderSuccess }: ChatModalProps) {
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-4 left-4 z-50 w-14 h-14 rounded-full bg-[#1C1917] border border-[#3D352D] shadow-lg shadow-black/30 flex items-center justify-center hover:bg-[#292524] transition-colors active:scale-95"
+        className="fixed bottom-4 left-4 z-50 w-14 h-14 rounded-full border shadow-lg shadow-black/30 flex items-center justify-center hover:bg-[#292524] transition-colors active:scale-95"
+        style={{ backgroundColor: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
         aria-label="چت با دستیار"
       >
-        <MessageCircle size={24} className="text-[#C4A88A]" />
+        <MessageCircle size={24} style={{ color: "var(--text-secondary)" }} />
       </button>
 
       <AnimatePresence>
@@ -342,55 +348,57 @@ export default function ChatModal({ cart, onOrderSuccess }: ChatModalProps) {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] as const }}
-              className="relative w-full md:w-[380px] h-[80vh] md:h-[600px] bg-[#1C1917] border border-[#3D352D] rounded-t-2xl md:rounded-2xl flex flex-col shadow-2xl overflow-hidden"
+              className="relative w-full md:w-[380px] h-[80vh] md:h-[600px] border rounded-t-2xl md:rounded-2xl flex flex-col shadow-2xl overflow-hidden"
+              style={{ backgroundColor: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
             >
-              <div className="flex items-center justify-between p-4 border-b border-[#3D352D]">
+              <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--border-subtle)" }}>
                 <div className="flex items-center gap-2">
-                  <Coffee size={20} className="text-[#C4A88A]" />
-                  <span className="font-bold text-[#EDE4D8] text-sm">
+                  <Coffee size={20} style={{ color: "var(--text-secondary)" }} />
+                  <span className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
                     دستیار کافه
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   {cart.length > 0 && (
-                    <span className="text-xs bg-[#C4A88A]/10 text-[#C4A88A] px-2 py-1 rounded-full border border-[#C4A88A]/20">
+                    <span className="text-xs px-2 py-1 rounded-full border"
+                      style={{ backgroundColor: "rgba(196,168,138,0.1)", color: "#C4A88A", borderColor: "rgba(196,168,138,0.2)" }}
+                    >
                       {cart.reduce((s, c) => s + c.quantity, 0)}
                     </span>
                   )}
                   <button
                     onClick={() => setIsOpen(false)}
-                    className="text-[#8B7355] hover:text-[#C4A88A] transition-colors"
+                    className="hover:text-[#C4A88A] transition-colors"
+                    style={{ color: "var(--text-muted)" }}
                   >
-
                     <X size={18} />
                   </button>
                 </div>
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`flex ${
-              msg.role === "user" ? "justify-start" : "justify-end"
-            }`}
-          >
-            <div
-              className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed ${
-                msg.role === "user"
-                  ? "bg-[#C4A88A]/10 text-[#C4A88A] rounded-br-md border border-[#C4A88A]/20"
-                  : "bg-[#292524] text-[#EDE4D8] rounded-bl-md"
-              }`}
-            >
-              <MsgText content={msg.content} />
-            </div>
-          </div>
-        ))}
+                {messages.map((msg, i) => (
+                  <div
+                    key={i}
+                    className={`flex ${
+                      msg.role === "user" ? "justify-start" : "justify-end"
+                    }`}
+                  >
+                    <div
+                      className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed ${
+                        msg.role === "user"
+                          ? "bg-[#C4A88A]/10 text-[#C4A88A] rounded-br-md border border-[#C4A88A]/20"
+                          : "bg-[#292524] text-[#EDE4D8] rounded-bl-md"
+                      }`}
+                    >
+                      <MsgText content={msg.content} />
+                    </div>
+                  </div>
+                ))}
 
                 {cart.length > 0 && orderStep === "idle" && (
                   <div className="bg-[#292524] rounded-2xl p-3 text-sm">
                     <p className="font-bold text-[#C4A88A] mb-2">
-
                       <ShoppingCart size={16} className="inline align-middle ml-1" />
                       سبد خرید
                     </p>
@@ -430,7 +438,7 @@ export default function ChatModal({ cart, onOrderSuccess }: ChatModalProps) {
                 <div ref={messagesEndRef} />
               </div>
 
-              <div className="p-3 border-t border-[#3D352D]">
+              <div className="p-3 border-t" style={{ borderColor: "var(--border-subtle)" }}>
                 {orderStep === "collect_table" || orderStep === "collect_phone" ? (
                   <div className="flex gap-2">
                     <input
@@ -444,13 +452,15 @@ export default function ChatModal({ cart, onOrderSuccess }: ChatModalProps) {
                           ? "شماره میز را وارد کنید..."
                           : "شماره موبایل را وارد کنید..."
                       }
-                      className="flex-1 bg-[#292524] border border-[#3D352D] rounded-xl px-4 py-2.5 text-sm text-[#EDE4D8] outline-none focus:border-[#C4A88A]/50 placeholder:text-[#8B7355]"
+                      className="flex-1 border rounded-xl px-4 py-2.5 text-sm outline-none placeholder:text-[#8B7355]"
+                      style={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}
                       autoFocus
                     />
                     <button
                       onClick={() => handleSendMessage(input)}
                       disabled={!input.trim()}
-                      className="px-4 py-2.5 rounded-xl bg-[#C4A88A]/10 text-[#C4A88A] font-bold text-sm border border-[#C4A88A]/20 disabled:opacity-40 hover:bg-[#C4A88A]/20 transition-colors"
+                      className="px-4 py-2.5 rounded-xl text-sm font-bold border disabled:opacity-40 transition-colors"
+                      style={{ backgroundColor: "rgba(196,168,138,0.1)", color: "#C4A88A", borderColor: "rgba(196,168,138,0.2)" }}
                     >
                       ارسال
                     </button>
@@ -469,7 +479,6 @@ export default function ChatModal({ cart, onOrderSuccess }: ChatModalProps) {
                       }`}
                       title={micSupported ? "ورود صوتی" : "مرورگر از ورود صوتی پشتیبانی نمی‌کند"}
                     >
-
                       {isListening ? <MicOff size={18} /> : <Mic size={18} />}
                     </button>
                     <input
@@ -479,13 +488,15 @@ export default function ChatModal({ cart, onOrderSuccess }: ChatModalProps) {
                       onChange={(e) => setInput(e.target.value)}
                       onKeyDown={handleKeyDown}
                       placeholder="پیام خود را بنویسید..."
-                      className="flex-1 bg-[#292524] border border-[#3D352D] rounded-xl px-4 py-2.5 text-sm text-[#EDE4D8] outline-none focus:border-[#C4A88A]/50 placeholder:text-[#8B7355]"
+                      className="flex-1 border rounded-xl px-4 py-2.5 text-sm outline-none placeholder:text-[#8B7355]"
+                      style={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}
                       disabled={orderStep === "submitting" || orderStep === "done"}
                     />
                     <button
                       onClick={() => handleSendMessage(input)}
                       disabled={!input.trim() || isLoading}
-                      className="px-4 py-2.5 rounded-xl bg-[#C4A88A]/10 text-[#C4A88A] font-bold text-sm border border-[#C4A88A]/20 disabled:opacity-40 hover:bg-[#C4A88A]/20 transition-colors"
+                      className="px-4 py-2.5 rounded-xl text-sm font-bold border disabled:opacity-40 transition-colors"
+                      style={{ backgroundColor: "rgba(196,168,138,0.1)", color: "#C4A88A", borderColor: "rgba(196,168,138,0.2)" }}
                     >
                       ارسال
                     </button>

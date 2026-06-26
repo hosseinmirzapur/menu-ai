@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDbMenuItems, saveDbMenuItems } from "@/lib/db";
-import { menuItems as defaultItems } from "@/lib/menu";
+import { getDbMenuItems, saveDbMenuItems, deleteDbMenuItem } from "@/lib/db";
 
 export async function PUT(
   request: NextRequest,
@@ -8,7 +7,7 @@ export async function PUT(
 ) {
   try {
     const body = await request.json();
-    const { nameEn, nameFa, price, category } = body;
+    const { nameEn, nameFa, price, category, restaurant_id } = body;
 
     if (!nameFa || !nameEn || !price || !category) {
       return NextResponse.json(
@@ -17,9 +16,9 @@ export async function PUT(
       );
     }
 
-    const dbItems = await getDbMenuItems();
-    const current = dbItems.length > 0 ? dbItems : defaultItems;
-    const index = current.findIndex((i) => i.id === params.id);
+    const rid = restaurant_id || "rest_default";
+    const dbItems = await getDbMenuItems(rid);
+    const index = dbItems.findIndex((i) => i.id === params.id);
 
     if (index === -1) {
       return NextResponse.json(
@@ -28,10 +27,16 @@ export async function PUT(
       );
     }
 
-    current[index] = { ...current[index], nameEn, nameFa, price, category };
-    await saveDbMenuItems(current);
+    dbItems[index] = {
+      ...dbItems[index],
+      nameEn,
+      nameFa,
+      price: Number(price),
+      categoryId: category,
+    } as any;
+    await saveDbMenuItems(rid, dbItems);
 
-    return NextResponse.json({ item: current[index] });
+    return NextResponse.json({ item: dbItems[index] });
   } catch (error) {
     console.error("PUT /api/menu-items/[id] error:", error);
     return NextResponse.json(
@@ -42,22 +47,20 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const dbItems = await getDbMenuItems();
-    const current = dbItems.length > 0 ? dbItems : defaultItems;
-    const filtered = current.filter((i) => i.id !== params.id);
+    const restaurantId = request.nextUrl.searchParams.get("restaurant_id") || "rest_default";
+    const deleted = await deleteDbMenuItem(restaurantId, params.id);
 
-    if (filtered.length === current.length) {
+    if (!deleted) {
       return NextResponse.json(
         { error: "آیتم یافت نشد" },
         { status: 404 }
       );
     }
 
-    await saveDbMenuItems(filtered);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("DELETE /api/menu-items/[id] error:", error);

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getRestaurantBySlug, getDbMenuItems } from "@/lib/db";
+import { buildAgentKit, buildSystemPrompt, sanitizeMessage } from "@/lib/agent";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { messages } = body;
+    const { messages, restaurant_slug } = body;
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json(
@@ -16,22 +18,41 @@ export async function POST(request: NextRequest) {
     const apiKey = process.env.AI_API_KEY;
     const model = process.env.AI_MODEL || "gpt-4o-mini";
 
+    const slug = restaurant_slug || "berlin-kontor";
+    const restaurant = await getRestaurantBySlug(slug);
+    const menuItems = restaurant ? await getDbMenuItems(restaurant.id) : [];
+    const agentKit = buildAgentKit(
+      restaurant || {
+        id: "rest_default",
+        slug: "berlin-kontor",
+        nameFa: "کافه دیجیتال",
+        nameEn: "Digital Café",
+        descriptionFa: "",
+        descriptionEn: "",
+        themeConfig: {},
+        businessHours: {},
+        phone: "",
+        address: { text: "" },
+        cafePassword: "",
+        isActive: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      },
+      menuItems,
+    );
+
+    const systemPrompt = buildSystemPrompt(agentKit);
+
     if (!apiKey) {
       return NextResponse.json({
-        reply:
-          "⚠️ دستیار هوش مصنوعی در دسترس نیست. لطفاً بعداً تلاش کنید.",
+        reply: `سلام! به ${agentKit.restaurant.nameFa} خوش آمدی 🎉\n\nمنوی ما:\n${agentKit.menu}\n\nساعت کاری:\n${agentKit.hours}\n\nچطور می‌توانم کمکت کنم؟`,
       });
     }
 
-    const systemPrompt = `تو یک دستیار دوستانه کافه هستی. منوی کافه:
-- قهوه: ۱۳۵,۰۰۰ تومان
-- کاپوچینو: ۱۴۵,۰۰۰ تومان
-- لاته: ۱۴۸,۰۰۰ تومان
-- کیک شکلاتی: ۱۵۵,۰۰۰ تومان
-- ساندویچ مرغ: ۱۷۸,۰۰۰ تومان
-- سالاد سزار: ۱۶۵,۰۰۰ تومان
-
-پاسخ‌های کوتاه، بامزه و مفید بده. اگر کاربر چیزی سفارش داد، آیتم را تأیید کن و بپرس چیز دیگری نیاز دارد یا نه. مکالمه را طبیعی نگه دار.`;
+    const sanitizedMessages = messages.map((m: any) => ({
+      role: m.role,
+      content: m.role === "user" ? sanitizeMessage(m.content) : m.content,
+    }));
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
@@ -41,7 +62,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         model,
-        messages: [{ role: "system", content: systemPrompt }, ...messages],
+        messages: [{ role: "system", content: systemPrompt }, ...sanitizedMessages],
         max_tokens: 300,
         temperature: 0.7,
       }),

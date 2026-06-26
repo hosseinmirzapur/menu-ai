@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ShoppingCart } from "lucide-react";
-import { menuItems as defaultItems, formatPrice } from "@/lib/menu";
+import { getMenuItems, formatPrice } from "@/lib/menu";
 import type { MenuItem } from "@/lib/menu";
 import MenuItemImage from "./MenuItemImage";
 import CartSheet from "./CartSheet";
@@ -32,16 +32,24 @@ const itemVariants = {
 
 export default function MenuGrid({
   onCartChange,
+  restaurantSlug = "berlin-kontor",
+  restaurantId,
 }: {
   onCartChange?: (items: CartItem[]) => void;
+  restaurantSlug?: string;
+  restaurantId?: string;
 }) {
-  const [items, setItems] = useState<MenuItem[]>(defaultItems);
+  const [items, setItems] = useState<MenuItem[]>(() => getMenuItems(restaurantSlug));
   const [menuLoading, setMenuLoading] = useState(true);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   useEffect(() => {
-    fetch("/api/menu-items")
+    const params = new URLSearchParams();
+    if (restaurantId) params.set("restaurant_id", restaurantId);
+    if (restaurantSlug) params.set("slug", restaurantSlug);
+
+    fetch(`/api/menu-items?${params}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.items && data.items.length > 0) {
@@ -50,7 +58,7 @@ export default function MenuGrid({
       })
       .catch(() => {})
       .finally(() => setMenuLoading(false));
-  }, []);
+  }, [restaurantSlug, restaurantId]);
 
   const notify = useCallback(
     (next: CartItem[]) => {
@@ -122,7 +130,7 @@ export default function MenuGrid({
 
   if (menuLoading) {
     return (
-      <div className="text-center py-12 text-[#8B7355]">
+      <div className="text-center py-12" style={{ color: "var(--text-muted)" }}>
         در حال بارگذاری...
       </div>
     );
@@ -140,26 +148,28 @@ export default function MenuGrid({
           <motion.div
             key={item.id}
             variants={itemVariants}
-            className="group bg-[#1C1917] border border-[#3D352D] rounded-xl overflow-hidden flex flex-col hover:border-[#C4A88A]/30 transition-colors"
+            className="group border rounded-xl overflow-hidden flex flex-col hover:border-[#C4A88A]/30 transition-colors"
+            style={{ backgroundColor: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
           >
             <MenuItemImage itemId={item.id} nameFa={item.nameFa} />
             <div className="p-3 md:p-4 flex flex-col gap-2 flex-1">
               <h3
-                className="font-headingPersian text-base md:text-lg font-bold text-[#EDE4D8]"
-                style={{ fontFamily: "var(--font-shabnam), var(--font-vazirmatn), system-ui" }}
+                className="font-headingPersian text-base md:text-lg font-bold"
+                style={{ fontFamily: "var(--font-shabnam), var(--font-vazirmatn), system-ui", color: "var(--text-primary)" }}
               >
                 {item.nameFa}
               </h3>
-              <p className="text-sm text-[#8B7355] font-sans">
+              <p className="text-sm font-sans" style={{ color: "var(--text-muted)" }}>
                 {item.nameEn}
               </p>
               <div className="flex items-center justify-between mt-auto">
-                <span className="text-sm md:text-base font-bold text-[#C4A88A] font-sans" dir="ltr">
+                <span className="text-sm md:text-base font-bold font-sans" dir="ltr" style={{ color: "var(--text-secondary)" }}>
                   {formatPrice(item.price)}
                 </span>
                 <button
                   onClick={() => addToCart(item)}
-                  className="px-3 py-1.5 rounded-lg bg-[#C4A88A]/10 text-[#C4A88A] text-sm font-bold hover:bg-[#C4A88A]/20 transition-colors active:scale-95 border border-[#C4A88A]/20"
+                  className="px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-[#C4A88A]/20 transition-colors active:scale-95 border"
+                  style={{ backgroundColor: "rgba(196,168,138,0.1)", color: "#C4A88A", borderColor: "rgba(196,168,138,0.2)" }}
                 >
                   + افزودن
                 </button>
@@ -169,7 +179,7 @@ export default function MenuGrid({
         ))}
         {items.length === 0 && (
           <div className="col-span-full text-center py-12">
-            <p className="text-[#8B7355] text-sm">
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
               هیچ آیتمی در منو وجود ندارد.
             </p>
           </div>
@@ -185,13 +195,15 @@ export default function MenuGrid({
             className="fixed bottom-6 md:bottom-6 left-1/2 -translate-x-1/2 z-40 cursor-pointer"
             onClick={() => setSheetOpen(true)}
           >
-            <div className="bg-[#1C1917] border border-[#3D352D] rounded-xl px-5 py-3 shadow-lg shadow-black/30 flex items-center gap-3 hover:border-[#C4A88A]/30 transition-colors">
-              <ShoppingCart size={18} className="text-[#C4A88A]" />
-              <span className="text-[#EDE4D8] font-bold">
+            <div className="rounded-xl px-5 py-3 shadow-lg shadow-black/30 flex items-center gap-3 hover:border-[#C4A88A]/30 transition-colors border"
+              style={{ backgroundColor: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
+            >
+              <ShoppingCart size={18} style={{ color: "var(--text-secondary)" }} />
+              <span className="font-bold" style={{ color: "var(--text-primary)" }}>
                 {totalItems} آیتم
               </span>
-              <span className="w-px h-5 bg-[#3D352D]" />
-              <span className="text-[#C4A88A] font-bold font-sans" dir="ltr">
+              <span className="w-px h-5" style={{ backgroundColor: "var(--border-subtle)" }} />
+              <span className="font-bold font-sans" dir="ltr" style={{ color: "var(--text-secondary)" }}>
                 {formatPrice(totalPrice)}
               </span>
             </div>

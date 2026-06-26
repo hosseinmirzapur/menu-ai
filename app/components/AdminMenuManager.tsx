@@ -22,7 +22,7 @@ const emptyForm: MenuFormData = {
 
 const CATEGORIES = ["نوشیدنی گرم", "نوشیدنی سرد", "دسر", "غذا", "پیش‌غذا"];
 
-export default function AdminMenuManager() {
+export default function AdminMenuManager({ restaurantId }: { restaurantId?: string }) {
   const [items, setItems] = useState<MenuFormData[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -30,9 +30,13 @@ export default function AdminMenuManager() {
   const [form, setForm] = useState<MenuFormData>(emptyForm);
   const [saving, setSaving] = useState(false);
 
+  const rid = restaurantId || "rest_default";
+
   const fetchItems = useCallback(async () => {
     try {
-      const res = await fetch("/api/menu-items");
+      const params = new URLSearchParams();
+      params.set("restaurant_id", rid);
+      const res = await fetch(`/api/menu-items?${params}`);
       const data = await res.json();
       setItems(
         (data.items || []).map((i: any) => ({
@@ -45,7 +49,7 @@ export default function AdminMenuManager() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [rid]);
 
   useEffect(() => {
     fetchItems();
@@ -81,7 +85,7 @@ export default function AdminMenuManager() {
         const res = await fetch(`/api/menu-items/${editingId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(itemToSave),
+          body: JSON.stringify({ ...itemToSave, restaurant_id: rid }),
         });
         if (!res.ok) throw new Error("Failed to update");
       } else {
@@ -91,6 +95,7 @@ export default function AdminMenuManager() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             items: current.map((i) => ({ ...i, price: Number(i.price) })),
+            restaurant_id: rid,
           }),
         });
         if (!res.ok) throw new Error("Failed to create");
@@ -108,7 +113,9 @@ export default function AdminMenuManager() {
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`آیا از حذف "${name}" اطمینان دارید؟`)) return;
     try {
-      const res = await fetch(`/api/menu-items/${id}`, { method: "DELETE" });
+      const params = new URLSearchParams();
+      params.set("restaurant_id", rid);
+      const res = await fetch(`/api/menu-items/${id}?${params}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete");
       fetchItems();
     } catch (err) {
@@ -121,7 +128,7 @@ export default function AdminMenuManager() {
 
   if (loading) {
     return (
-      <div className="text-center py-12 text-[#8B7355]">
+      <div className="text-center py-12" style={{ color: "var(--text-muted)" }}>
         در حال بارگذاری...
       </div>
     );
@@ -131,16 +138,15 @@ export default function AdminMenuManager() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2
-          className="text-lg font-bold text-[#EDE4D8]"
-          style={{
-            fontFamily: "var(--font-shabnam), var(--font-vazirmatn), system-ui",
-          }}
+          className="text-lg font-bold"
+          style={{ fontFamily: "var(--font-shabnam), var(--font-vazirmatn), system-ui", color: "var(--text-primary)" }}
         >
           مدیریت منو
         </h2>
         <button
           onClick={openAdd}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#C4A88A]/10 text-[#C4A88A] text-sm font-bold border border-[#C4A88A]/20 hover:bg-[#C4A88A]/20 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold border transition-colors"
+          style={{ backgroundColor: "rgba(196,168,138,0.1)", color: "#C4A88A", borderColor: "rgba(196,168,138,0.2)" }}
         >
           <Plus size={16} />
           افزودن آیتم
@@ -150,7 +156,7 @@ export default function AdminMenuManager() {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[#3D352D] text-[#C4A88A]">
+            <tr className="border-b" style={{ borderColor: "var(--border-subtle)", color: "var(--text-secondary)" }}>
               <th className="text-right py-3 px-2 font-semibold">نام</th>
               <th className="text-right py-3 px-2 font-semibold">English</th>
               <th className="text-right py-3 px-2 font-semibold">دسته</th>
@@ -162,36 +168,36 @@ export default function AdminMenuManager() {
             {items.map((item) => (
               <tr
                 key={item.id}
-                className="border-b border-[#3D352D]/50 hover:bg-[#292524]/50 transition-colors"
+                className="border-b hover:bg-[#292524]/50 transition-colors"
+                style={{ borderColor: "var(--border-subtle)" }}
               >
-                <td className="py-3 px-2 font-bold text-[#EDE4D8]">
+                <td className="py-3 px-2 font-bold" style={{ color: "var(--text-primary)" }}>
                   {item.nameFa}
                 </td>
-                <td className="py-3 px-2 text-[#8B7355] text-xs font-sans">
+                <td className="py-3 px-2 text-xs font-sans" style={{ color: "var(--text-muted)" }}>
                   {item.nameEn}
                 </td>
                 <td className="py-3 px-2">
-                  <span className="text-xs bg-[#292524] text-[#C4A88A] px-2 py-0.5 rounded-full">
+                  <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-elevated)", color: "#C4A88A" }}>
                     {item.category}
                   </span>
                 </td>
-                <td
-                  className="py-3 px-2 text-[#C4A88A] font-bold font-sans text-xs"
-                  dir="ltr"
-                >
+                <td className="py-3 px-2 font-bold font-sans text-xs" dir="ltr" style={{ color: "var(--text-secondary)" }}>
                   {formatPrice(item.price)}
                 </td>
                 <td className="py-3 px-2">
                   <div className="flex items-center justify-center gap-1">
                     <button
                       onClick={() => openEdit(item)}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-[#8B7355] hover:text-[#C4A88A] hover:bg-[#C4A88A]/10 transition-colors"
+                      className="w-8 h-8 rounded-lg flex items-center justify-center hover:text-[#C4A88A] hover:bg-[#C4A88A]/10 transition-colors"
+                      style={{ color: "var(--text-muted)" }}
                     >
                       <Pencil size={14} />
                     </button>
                     <button
                       onClick={() => handleDelete(item.id, item.nameFa)}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-[#8B7355] hover:text-[#9F391B] hover:bg-[#9F391B]/10 transition-colors"
+                      className="w-8 h-8 rounded-lg flex items-center justify-center hover:text-[#9F391B] hover:bg-[#9F391B]/10 transition-colors"
+                      style={{ color: "var(--text-muted)" }}
                     >
                       <Trash2 size={14} />
                     </button>
@@ -204,7 +210,7 @@ export default function AdminMenuManager() {
 
         {items.length === 0 && (
           <div className="text-center py-12">
-            <p className="text-[#8B7355]">هیچ آیتمی در منو وجود ندارد.</p>
+            <p style={{ color: "var(--text-muted)" }}>هیچ آیتمی در منو وجود ندارد.</p>
           </div>
         )}
       </div>
@@ -227,16 +233,18 @@ export default function AdminMenuManager() {
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
             >
               <div
-                className="bg-[#1C1917] border border-[#3D352D] rounded-2xl p-6 w-full max-w-md shadow-xl shadow-black/30"
+                className="border rounded-2xl p-6 w-full max-w-md shadow-xl shadow-black/30"
+                style={{ backgroundColor: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between mb-5">
-                  <h3 className="font-bold text-[#EDE4D8]">
+                  <h3 className="font-bold" style={{ color: "var(--text-primary)" }}>
                     {editingId ? "ویرایش آیتم" : "افزودن آیتم جدید"}
                   </h3>
                   <button
                     onClick={() => setModalOpen(false)}
-                    className="text-[#8B7355] hover:text-[#C4A88A] transition-colors p-1"
+                    className="hover:text-[#C4A88A] transition-colors p-1"
+                    style={{ color: "var(--text-muted)" }}
                   >
                     <X size={18} />
                   </button>
@@ -245,7 +253,7 @@ export default function AdminMenuManager() {
                 <div className="space-y-4">
                   {!editingId && (
                     <div>
-                      <label className="block text-sm font-bold text-[#C4A88A] mb-1.5">
+                      <label className="block text-sm font-bold mb-1.5" style={{ color: "#C4A88A" }}>
                         شناسه (slug)
                       </label>
                       <input
@@ -253,7 +261,8 @@ export default function AdminMenuManager() {
                         onChange={(e) =>
                           setForm((f) => ({ ...f, id: e.target.value }))
                         }
-                        className="w-full bg-[#292524] border border-[#3D352D] rounded-xl px-4 py-2.5 text-sm text-[#EDE4D8] outline-none focus:border-[#C4A88A]/50 placeholder:text-[#8B7355] font-sans"
+                        className="w-full border rounded-xl px-4 py-2.5 text-sm outline-none placeholder:text-[#8B7355] font-sans"
+                        style={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}
                         placeholder="e.g. espresso"
                         dir="ltr"
                       />
@@ -261,7 +270,7 @@ export default function AdminMenuManager() {
                   )}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-bold text-[#C4A88A] mb-1.5">
+                      <label className="block text-sm font-bold mb-1.5" style={{ color: "#C4A88A" }}>
                         نام فارسی
                       </label>
                       <input
@@ -269,12 +278,13 @@ export default function AdminMenuManager() {
                         onChange={(e) =>
                           setForm((f) => ({ ...f, nameFa: e.target.value }))
                         }
-                        className="w-full bg-[#292524] border border-[#3D352D] rounded-xl px-4 py-2.5 text-sm text-[#EDE4D8] outline-none focus:border-[#C4A88A]/50 placeholder:text-[#8B7355]"
+                        className="w-full border rounded-xl px-4 py-2.5 text-sm outline-none placeholder:text-[#8B7355]"
+                        style={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}
                         placeholder="اسپرسو"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-bold text-[#C4A88A] mb-1.5">
+                      <label className="block text-sm font-bold mb-1.5" style={{ color: "#C4A88A" }}>
                         نام انگلیسی
                       </label>
                       <input
@@ -282,7 +292,8 @@ export default function AdminMenuManager() {
                         onChange={(e) =>
                           setForm((f) => ({ ...f, nameEn: e.target.value }))
                         }
-                        className="w-full bg-[#292524] border border-[#3D352D] rounded-xl px-4 py-2.5 text-sm text-[#EDE4D8] outline-none focus:border-[#C4A88A]/50 placeholder:text-[#8B7355] font-sans"
+                        className="w-full border rounded-xl px-4 py-2.5 text-sm outline-none placeholder:text-[#8B7355] font-sans"
+                        style={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}
                         placeholder="Espresso"
                         dir="ltr"
                       />
@@ -290,7 +301,7 @@ export default function AdminMenuManager() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-bold text-[#C4A88A] mb-1.5">
+                      <label className="block text-sm font-bold mb-1.5" style={{ color: "#C4A88A" }}>
                         قیمت (تومان)
                       </label>
                       <input
@@ -299,13 +310,14 @@ export default function AdminMenuManager() {
                           const v = e.target.value.replace(/\D/g, "");
                           setForm((f) => ({ ...f, price: v }));
                         }}
-                        className="w-full bg-[#292524] border border-[#3D352D] rounded-xl px-4 py-2.5 text-sm text-[#EDE4D8] outline-none focus:border-[#C4A88A]/50 placeholder:text-[#8B7355] font-sans"
+                        className="w-full border rounded-xl px-4 py-2.5 text-sm outline-none placeholder:text-[#8B7355] font-sans"
+                        style={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}
                         placeholder="150000"
                         dir="ltr"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-bold text-[#C4A88A] mb-1.5">
+                      <label className="block text-sm font-bold mb-1.5" style={{ color: "#C4A88A" }}>
                         دسته‌بندی
                       </label>
                       <select
@@ -313,7 +325,8 @@ export default function AdminMenuManager() {
                         onChange={(e) =>
                           setForm((f) => ({ ...f, category: e.target.value }))
                         }
-                        className="w-full bg-[#292524] border border-[#3D352D] rounded-xl px-4 py-2.5 text-sm text-[#EDE4D8] outline-none focus:border-[#C4A88A]/50"
+                        className="w-full border rounded-xl px-4 py-2.5 text-sm outline-none"
+                        style={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}
                       >
                         {CATEGORIES.map((c) => (
                           <option key={c} value={c}>
@@ -328,7 +341,8 @@ export default function AdminMenuManager() {
                 <div className="flex gap-3 mt-6">
                   <button
                     onClick={() => setModalOpen(false)}
-                    className="flex-1 py-2.5 rounded-xl bg-[#292524] text-[#8B7355] text-sm font-bold border border-[#3D352D] hover:bg-[#3D352D] transition-colors"
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold border transition-colors"
+                    style={{ backgroundColor: "var(--bg-elevated)", color: "var(--text-muted)", borderColor: "var(--border-subtle)" }}
                   >
                     انصراف
                   </button>
@@ -341,7 +355,8 @@ export default function AdminMenuManager() {
                       !form.price.trim() ||
                       (!editingId && !form.id.trim())
                     }
-                    className="flex-1 py-2.5 rounded-xl bg-[#C4A88A] text-[#0C0A09] text-sm font-bold hover:bg-[#D4B896] disabled:opacity-40 transition-colors"
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold disabled:opacity-40 transition-colors"
+                    style={{ backgroundColor: "#C4A88A", color: "#0C0A09" }}
                   >
                     {saving
                       ? "در حال ذخیره..."

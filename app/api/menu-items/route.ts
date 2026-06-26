@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDbMenuItems, saveDbMenuItems } from "@/lib/db";
 import type { DbMenuItem } from "@/lib/db";
-import { menuItems as defaultItems } from "@/lib/menu";
+import { getMenuItems } from "@/lib/menu";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const dbItems = await getDbMenuItems();
-    const items = dbItems.length > 0 ? dbItems : defaultItems;
+    const restaurantId = request.nextUrl.searchParams.get("restaurant_id");
+    const restaurantSlug = request.nextUrl.searchParams.get("slug");
+
+    const dbItems = await getDbMenuItems(restaurantId || undefined);
+    const items = dbItems.length > 0 ? dbItems : (restaurantSlug ? getMenuItems(restaurantSlug) : []);
+
     return NextResponse.json({ items });
   } catch (error) {
     console.error("GET /api/menu-items error:", error);
@@ -20,7 +24,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { items } = body;
+    const { items, restaurant_id } = body;
 
     if (!items || !Array.isArray(items)) {
       return NextResponse.json(
@@ -38,7 +42,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    await saveDbMenuItems(items as DbMenuItem[]);
+    const rid = restaurant_id || "rest_default";
+    const dbItems: DbMenuItem[] = items.map((i: any) => ({
+      id: i.id,
+      restaurantId: rid,
+      categoryId: i.categoryId || "",
+      nameEn: i.nameEn,
+      nameFa: i.nameFa,
+      descriptionFa: i.descriptionFa || "",
+      descriptionEn: i.descriptionEn || "",
+      price: Number(i.price),
+      cost: i.cost || 0,
+      isAvailable: i.isAvailable !== false,
+      isFeatured: i.isFeatured || false,
+      sortOrder: i.sortOrder || 0,
+      preparationTime: i.preparationTime || 0,
+      dietaryTags: i.dietaryTags || [],
+      createdAt: Date.now(),
+    }));
+
+    await saveDbMenuItems(rid, dbItems);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("POST /api/menu-items error:", error);
