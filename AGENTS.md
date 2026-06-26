@@ -20,6 +20,7 @@ Persian-first multi-tenant online menu and smart ordering platform for cafés an
 | Icons | lucide-react | Consistent vector icon system (zero emoji) |
 | Storage | @supabase/supabase-js + in-memory Map fallback | Multi-tenant: restaurants, orders, menu items, categories |
 | AI | OpenAI-compatible API + agent kit | Smart ordering assistant per restaurant |
+| Auth | bcryptjs + httpOnly cookies | Cafe owner password hashing and verification |
 | Fonts | Inter, Vazirmatn, Space Grotesk (Google Fonts) + Shabnam (self-hosted) | English headings/body, Persian headings/body |
 
 ---
@@ -54,8 +55,11 @@ Dashboard shows a restaurant switcher when multiple restaurants exist. Orders, m
 ## Component Tree
 
 ```
+middleware.ts (subdomain → /restaurant/{slug} rewrite)
+
 layout.tsx (RTL html, fonts, globals.css with CSS variable theming)
-├── page.tsx (customer menu — wrapped in RestaurantProvider)
+│
+├── restaurant/[slug]/page.tsx → CustomerMenuPage (per-cafe menu)
 │   ├── FloatingOrbs (background decoration)
 │   ├── MenuGrid (menu items + cart state, scoped to restaurant)
 │   │   ├── MenuItemImage (CSS gradient per item)
@@ -63,13 +67,19 @@ layout.tsx (RTL html, fonts, globals.css with CSS variable theming)
 │   ├── ChatModal (AI assistant with ordering flow, scoped to restaurant)
 │   └── OrderSuccess (confetti animation)
 │
+├── page.tsx (default customer menu — wrapped in RestaurantProvider)
+│
 ├── admin/page.tsx (login form)
 │
 ├── admin/dashboard/page.tsx → AdminDashboardClient
 │   ├── AdminTable (order management, scoped to restaurant)
 │   ├── AdminMenuManager (menu item CRUD, scoped to restaurant)
-│   ├── RestaurantManager (multi-restaurant CRUD)
+│   ├── RestaurantManager (multi-restaurant CRUD with ThemeCustomizer + BusinessHoursEditor)
 │   └── QRCodeDisplay
+│
+├── cafe/login/page.tsx (per-cafe login form)
+│
+└── cafe/dashboard/page.tsx (per-cafe orders, menu, theme management)
 ```
 
 ---
@@ -104,6 +114,14 @@ Admin form → server action adminLogin() → validates password from env
 → sets httpOnly cookie (4hr expiry) → redirects to /admin/dashboard
 checkAdminAuth() reads cookie → protects dashboard
 adminLogout() deletes cookie → redirects to /admin
+```
+
+```
+Cafe login form → server action cafeLogin() → fetches restaurant by slug
+→ bcrypt.compare(password, restaurant.cafePassword) → sets httpOnly cookie
+→ redirects to /cafe/dashboard
+getCafeSession() reads cookie → returns slug for session verification
+cafeLogout() deletes cookie → redirects to /cafe/login
 ```
 
 ---
@@ -230,11 +248,13 @@ npm run start         # Production server
 ## File Structure
 
 ```
+├── middleware.ts                   # Subdomain → /restaurant/{slug} rewrite
 ├── app/
 │   ├── page.tsx                    # Customer menu page (wrapped in RestaurantProvider)
 │   ├── layout.tsx                  # RTL root layout + fonts
 │   ├── styles/globals.css          # Tailwind + CSS variable theming + animations
 │   ├── lib/
+│   │   ├── auth.ts                 # hashPassword, verifyPassword, stripSensitive (bcrypt)
 │   │   ├── db.ts                   # Multi-tenant CRUD (restaurants, orders, menu items)
 │   │   ├── menu.ts                 # MenuItem type + per-slug static defaults + formatPrice
 │   │   ├── restaurant-context.tsx  # RestaurantProvider + useRestaurant hook
@@ -244,7 +264,9 @@ npm run start         # Production server
 │   │       ├── index.ts            # Agent re-exports
 │   │       ├── kit.ts              # buildAgentKit, buildSystemPrompt
 │   │       └── sanitize.ts         # Input sanitization utilities
-│   ├── actions/index.ts            # Server actions (adminLogin, adminLogout, checkAdminAuth)
+│   ├── actions/
+│   │   ├── index.ts                # Server actions (adminLogin, adminLogout, checkAdminAuth)
+│   │   └── cafe-auth.ts            # Cafe login/logout/session (bcrypt-verified)
 │   ├── components/
 │   │   ├── MenuGrid.tsx            # Item grid + cart (restaurant-scoped)
 │   │   ├── MenuItemImage.tsx       # CSS gradient image per item
@@ -256,9 +278,15 @@ npm run start         # Production server
 │   │   ├── AdminTable.tsx          # Orders table (restaurant-scoped)
 │   │   ├── AdminMenuManager.tsx    # Menu CRUD (restaurant-scoped)
 │   │   ├── RestaurantManager.tsx   # Multi-restaurant CRUD
+│   │   ├── ThemeCustomizer.tsx     # 5 presets + custom CSS color pickers
+│   │   ├── BusinessHoursEditor.tsx # Per-day time editor
 │   │   └── ui/
 │   │       ├── button.tsx          # Custom Button primitive
 │   │       └── badge.tsx           # Custom Badge primitive
+│   ├── restaurant/
+│   │   └── [slug]/
+│   │       ├── page.tsx            # Server component for customer menu
+│   │       └── CustomerMenuPage.tsx # Client component with per-cafe theme
 │   ├── api/
 │   │   ├── restaurants/route.ts    # GET list / POST create
 │   │   ├── restaurants/[slug]/route.ts  # GET / PUT restaurant
@@ -266,12 +294,16 @@ npm run start         # Production server
 │   │   ├── orders/[id]/route.ts    # PUT status / DELETE (scoped)
 │   │   ├── menu-items/route.ts     # GET list / POST save (scoped)
 │   │   ├── menu-items/[id]/route.ts # PUT update / DELETE (scoped)
-│   │   └── ai/route.ts             # AI chat proxy (restaurant-aware)
-│   └── admin/
-│       ├── page.tsx                # Login page
-│       └── dashboard/
-│           ├── page.tsx            # Server wrapper (auth check)
-│           └── AdminDashboardClient.tsx  # Tabbed dashboard with restaurant mgmt
+│   │   ├── ai/route.ts             # AI chat proxy (restaurant-aware)
+│   │   └── cafe/session/route.ts   # Cafe session verification
+│   ├── admin/
+│   │   ├── page.tsx                # Login page
+│   │   └── dashboard/
+│   │       ├── page.tsx            # Server wrapper (auth check)
+│   │       └── AdminDashboardClient.tsx  # Tabbed dashboard with restaurant mgmt
+│   └── cafe/
+│       ├── login/page.tsx          # Cafe owner login form
+│       └── dashboard/page.tsx      # Cafe owner management dashboard
 ├── public/fonts/shabnam/           # Self-hosted Shabnam (woff2)
 ├── sql/schema.sql                  # Full multi-tenant schema
 ├── AGENTS.md
@@ -298,3 +330,6 @@ npm run start         # Production server
 - **In-memory store is volatile:** Without Supabase, restaurants, orders, and menu changes are lost on server restart.
 - **CSS variable theming:** Each restaurant's `themeConfig` overrides CSS variables on the `<html>` element via `applyTheme()`. This means components use `var(--bg-surface)` etc. instead of hardcoded Tailwind classes like `bg-[#1C1917]`. For colors outside the standard palette, use Tailwind classes directly.
 - **Multi-tenant scoping:** All database operations require `restaurant_id` to scope data correctly. The admin dashboard picks the restaurant context.
+- **bcrypt hashing:** Cafe passwords are automatically hashed with bcrypt (10 rounds) in `createRestaurant()` and `updateRestaurant()`. The `cafeLogin` action uses `verifyPassword()` to compare. Plaintext comparison is never used.
+- **cafe_password stripped from API:** All GET/POST/PUT responses from `/api/restaurants` strip the `cafePassword` field via `stripSensitive()`. The edit form in RestaurantManager shows an empty password field — leaving it empty preserves the existing hash.
+- **Subdomain routing:** `middleware.ts` rewrites `*.menuchat.vercel.app` subdomains to `/restaurant/{slug}`. For local testing without DNS, use path-based access: `localhost:3000/restaurant/{slug}`.
