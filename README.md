@@ -35,8 +35,8 @@
     <td width="50%">Each café/restaurant has its own menu, orders, theme, and staff login — fully isolated</td>
   </tr>
   <tr>
-    <td width="50%" align="right"><strong>🌐 Subdomain Routing</strong></td>
-    <td width="50%">Each cafe gets its own subdomain: <code>cafe-slug.menuchat.vercel.app</code></td>
+    <td width="50%" align="right"><strong>🍴 Path-Based Café Access</strong></td>
+    <td width="50%">Each cafe accessed via path: <code>/restaurant/{slug}</code> on the main domain</td>
   </tr>
   <tr>
     <td width="50%" align="right"><strong>📱 Online Menu</strong></td>
@@ -71,8 +71,8 @@
     <td width="50%">Per-day time editor for all 7 days (شنبه–جمعه)</td>
   </tr>
   <tr>
-    <td width="50%" align="right"><strong>📷 QR Code</strong></td>
-    <td width="50%">Auto-generated QR code pointing to each cafe's subdomain</td>
+    <td width="50%" align="right"><strong>📱 Share Link</strong></td>
+    <td width="50%">QR code points to per-cafe page: <code>/restaurant/{slug}</code> on this domain</td>
   </tr>
   <tr>
     <td width="50%" align="right"><strong>🇮🇷 Persian First</strong></td>
@@ -137,20 +137,32 @@ Restaurant (slug, nameFa/en, themeConfig, businessHours, cafePassword...)
 └── Menu Categories (scoped to restaurant_id)
 ```
 
-### Access Points
-
-| URL | Who | What |
-|---|---|---|
-| `*.menuchat.vercel.app` | Customers | Menu, cart, AI chat, order |
-| `/admin` | Super admin | Global dashboard, manage all cafes |
-| `/cafe/login` → `/cafe/dashboard` | Cafe owners | Their own orders, menu, theme |
-
 ### Subdomain Flow
 
 ```
 Browser → cafe-slug.menuchat.vercel.app
          → middleware.ts rewrites to /restaurant/{slug}
          → RestaurantProvider reads slug from hostname
+         → Server renders scoped menu with cafe's theme
+```
+
+---
+
+### Path-Based Café Flow
+
+```
+Browser → {domain}/restaurant/{slug}
+         → CustomerMenuPage component
+         → RestaurantProvider reads slug from URL path
+         → Server renders scoped menu with cafe's theme
+```
+
+---
+
+```
+Browser → {domain}/restaurant/{slug}
+         → CustomerMenuPage component
+         → RestaurantProvider reads slug from URL path
          → Server renders scoped menu with cafe's theme
 ```
 
