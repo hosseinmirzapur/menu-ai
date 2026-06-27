@@ -90,33 +90,42 @@ ${agentKit.hours}
     const onAbort = () => abortController.abort();
     request.signal.addEventListener("abort", onAbort, { once: true });
 
-    let response: Response;
+    let response: Response | undefined;
+    const maxRetries = 2;
     try {
-      response = await fetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          "HTTP-Referer": "https://menuchat.vercel.app",
-          "X-Title": "Digital Cafe",
-        },
-        signal: abortController.signal,
-        body: JSON.stringify({
-          model,
-          messages: [{ role: "system", content: systemPrompt }, ...lastMessages],
-          tools: [orderTool],
-          tool_choice: "auto",
-          max_tokens: 500,
-          temperature: 0.3,
-        }),
-      });
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        response = await fetch(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+            "HTTP-Referer": "https://menuchat.vercel.app",
+            "X-Title": "Digital Cafe",
+          },
+          signal: abortController.signal,
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "system", content: systemPrompt }, ...lastMessages],
+            tools: [orderTool],
+            tool_choice: "auto",
+            max_tokens: 500,
+            temperature: 0.3,
+          }),
+        });
+        if (response.status === 429 && attempt < maxRetries) {
+          const retryAfter = (attempt + 1) * 2000;
+          await new Promise((r) => setTimeout(r, retryAfter));
+          continue;
+        }
+        break;
+      }
     } finally {
       clearTimeout(timeout);
       request.signal.removeEventListener("abort", onAbort);
     }
 
-    if (!response.ok) {
-      console.error("AI API error:", response.status);
+    if (!response || !response.ok) {
+      console.error("AI API error:", response?.status);
       return Response.json({ reply: "متأسفم، خطایی رخ داد. لطفاً دوباره تلاش کنید.", orderPlaced: false });
     }
 

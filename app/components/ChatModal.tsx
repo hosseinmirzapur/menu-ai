@@ -108,12 +108,20 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            messages: [...messages, { role: "user", content: userMsg }].slice(-10),
+            messages: [...messages, { role: "user", content: userMsg }].slice(-6),
             restaurant_slug: restaurantSlug,
             restaurant_id: restaurantId,
             cart,
           }),
         });
+
+        if (res.status === 429) {
+          addMessage({
+            role: "assistant",
+            content: "درخواست‌های زیادی ارسال شده. لطفاً چند لحظه صبر کن و دوباره تلاش کن.",
+          });
+          return;
+        }
 
         const data = await res.json();
         if (data.reply) {
