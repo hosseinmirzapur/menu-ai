@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   MessageCircle,
   Coffee,
@@ -9,41 +11,20 @@ import {
   ShoppingCart,
   Mic,
   MicOff,
-  PartyPopper,
-  HelpCircle,
-  ThumbsUp,
-  Smartphone,
-  RefreshCw,
-  CheckCircle,
-  XCircle,
 } from "lucide-react";
 import type { CartItem } from "./MenuGrid";
 
-const EMOJI_ICONS: Record<string, ReactNode> = {
-  "🎉": <PartyPopper size={16} className="inline align-middle mx-0.5" />,
-  "🤔": <HelpCircle size={16} className="inline align-middle mx-0.5" />,
-  "👍": <ThumbsUp size={16} className="inline align-middle mx-0.5" />,
-  "📱": <Smartphone size={16} className="inline align-middle mx-0.5" />,
-  "🔄": <RefreshCw size={16} className="inline align-middle mx-0.5" />,
-  "✅": <CheckCircle size={16} className="inline align-middle mx-0.5" />,
-  "❌": <XCircle size={16} className="inline align-middle mx-0.5" />,
-  "🎤": <Mic size={16} className="inline align-middle mx-0.5" />,
-};
-
-function MsgText({ content }: { content: string }) {
-  const parts = content.split(/([🎉🤔👍📱🔄✅❌🎤])/);
-  return (
-    <>
-      {parts.map((part, i) =>
-        EMOJI_ICONS[part] ? (
-          <span key={i}>{EMOJI_ICONS[part]}</span>
-        ) : (
-          <span key={i}>{part}</span>
-        )
-      )}
-    </>
-  );
+interface CartActionAdd {
+  type: "add";
+  item: { id: string; nameFa: string; nameEn: string; price: number };
+  quantity: number;
 }
+interface CartActionRemove {
+  type: "remove";
+  itemId: string;
+  quantity: number;
+}
+type CartAction = CartActionAdd | CartActionRemove;
 
 interface Message {
   role: "user" | "assistant";
@@ -53,11 +34,28 @@ interface Message {
 interface ChatModalProps {
   cart: CartItem[];
   onOrderSuccess: () => void;
+  onCartActions: (actions: CartAction[]) => void;
   restaurantSlug?: string;
   restaurantId?: string;
 }
 
-export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berlin-kontor", restaurantId }: ChatModalProps) {
+function MarkdownContent({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        p: ({ children }) => <span>{children}</span>,
+        ul: ({ children }) => <>{children}</>,
+        ol: ({ children }) => <>{children}</>,
+        li: ({ children }) => <div className="flex gap-1.5"><span className="text-[#C4A88A]">•</span><span>{children}</span></div>,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
+
+export default function ChatModal({ cart, onOrderSuccess, onCartActions, restaurantSlug = "berlin-kontor", restaurantId }: ChatModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -127,6 +125,9 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
         if (data.reply) {
           addMessage({ role: "assistant", content: data.reply });
         }
+        if (data.cartActions && data.cartActions.length > 0) {
+          onCartActions(data.cartActions);
+        }
         if (data.orderPlaced) {
           onOrderSuccess();
         }
@@ -139,7 +140,7 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
         setIsLoading(false);
       }
     },
-    [isLoading, messages, cart, addMessage, restaurantSlug, restaurantId, onOrderSuccess]
+    [isLoading, messages, cart, addMessage, restaurantSlug, restaurantId, onOrderSuccess, onCartActions]
   );
 
   const toggleListening = useCallback(() => {
@@ -191,12 +192,8 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
         recognition.start();
         setIsListening(true);
       })
-      .catch((err) => {
-        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-          addMessage({ role: "assistant", content: "دسترسی به میکروفون رد شد. لطفاً در تنظیمات مرورگر دسترسی را مجاز کن." });
-        } else {
-          addMessage({ role: "assistant", content: "میکروفون در دسترس نیست. لطفاً متن را تایپ کن." });
-        }
+      .catch(() => {
+        addMessage({ role: "assistant", content: "میکروفون در دسترس نیست. لطفاً متن را تایپ کن." });
       });
   }, [SpeechRecognition, isListening, addMessage, handleSendMessage]);
 
@@ -267,7 +264,7 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
                           : "bg-[#292524] text-[#EDE4D8] rounded-bl-md"
                       }`}
                     >
-                      <MsgText content={msg.content} />
+                      <MarkdownContent content={msg.content} />
                     </div>
                   </div>
                 ))}

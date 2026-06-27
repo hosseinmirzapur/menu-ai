@@ -7,6 +7,18 @@ interface CartItem {
   quantity: number;
 }
 
+interface CartActionAdd {
+  type: "add";
+  item: { id: string; nameFa: string; nameEn: string; price: number };
+  quantity: number;
+}
+interface CartActionRemove {
+  type: "remove";
+  itemId: string;
+  quantity: number;
+}
+type CartAction = CartActionAdd | CartActionRemove;
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -51,14 +63,16 @@ ${agentKit.menu}
 ${agentKit.hours}
 
 چطور می‌توانم کمکت کنم؟`;
-      return Response.json({ reply, orderPlaced: false });
+      return Response.json({ reply, orderPlaced: false, cartActions: [] });
     }
 
     const cartInfo = Array.isArray(cart) && cart.length > 0
-      ? `\n\nسبد خرید فعلی مشتری:\n${cart.map((c: CartItem) => `- ${c.menuItem.nameFa} × ${c.quantity} = ${new Intl.NumberFormat("fa-IR").format(c.menuItem.price * c.quantity)} تومان`).join("\n")}\nمجموع: ${new Intl.NumberFormat("fa-IR").format(cart.reduce((s: number, c: CartItem) => s + c.menuItem.price * c.quantity, 0))} تومان\nقبل از ثبت سفارش حتماً شماره میز و تلفن مشتری را بپرس.`
+      ? `\n\nسبد خرید فعلی مشتری:\n${cart.map((c: CartItem) =>
+          `- ${c.menuItem.nameFa} × ${c.quantity} = ${new Intl.NumberFormat("fa-IR").format(c.menuItem.price * c.quantity)} تومان`
+        ).join("\n")}\nمجموع: ${new Intl.NumberFormat("fa-IR").format(cart.reduce((s: number, c: CartItem) => s + c.menuItem.price * c.quantity, 0))} تومان`
       : "";
 
-    const systemPrompt = buildSystemPrompt(agentKit) + cartInfo + "\n\nپاسخ‌هایت خیلی کوتاه و سریع باشه. بدون تحلیل اضافی مستقیم جواب بده. از ایموجی‌های 🎉👍📱✅❌ استفاده کن.";
+    const systemPrompt = buildSystemPrompt(agentKit) + cartInfo + "\n\nپاسخ‌هایت خیلی کوتاه و سریع باشه. بدون تحلیل اضافی مستقیم جواب بده.";
 
     const sanitizedMessages = messages.map((m: any) => ({
       role: m.role,
@@ -67,11 +81,43 @@ ${agentKit.hours}
 
     const lastMessages = sanitizedMessages.slice(-6);
 
-    const orderTool = {
+    const addToCartTool = {
+      type: "function" as const,
+      function: {
+        name: "add_to_cart",
+        description: "آیتمی به سبد خرید مشتری اضافه کن. از شناسه (id) آیتم که در منو مشخص شده استفاده کن.",
+        parameters: {
+          type: "object",
+          properties: {
+            itemId: { type: "string", description: "شناسه آیتم از منو (مثال: coffee, latte)" },
+            quantity: { type: "number", description: "تعداد (پیش‌فرض ۱)" },
+          },
+          required: ["itemId"],
+        },
+      },
+    };
+
+    const removeFromCartTool = {
+      type: "function" as const,
+      function: {
+        name: "remove_from_cart",
+        description: "آیتمی از سبد خرید مشتری حذف کن.",
+        parameters: {
+          type: "object",
+          properties: {
+            itemId: { type: "string", description: "شناسه آیتم" },
+            quantity: { type: "number", description: "تعداد حذف (همه)" },
+          },
+          required: ["itemId"],
+        },
+      },
+    };
+
+    const createOrderTool = {
       type: "function" as const,
       function: {
         name: "create_order",
-        description: "بعد از گرفتن شماره میز و تلفن از مشتری، سفارش نهایی را ثبت کن. آیتم‌ها از سبد خرید فعلی مشتری گرفته می‌شوند.",
+        description: "بعد از گرفتن شماره میز و تلفن از مشتری، سفارش نهایی را ثبت کن.",
         parameters: {
           type: "object",
           properties: {
@@ -106,7 +152,7 @@ ${agentKit.hours}
           body: JSON.stringify({
             model,
             messages: [{ role: "system", content: systemPrompt }, ...lastMessages],
-            tools: [orderTool],
+            tools: [addToCartTool, removeFromCartTool, createOrderTool],
             tool_choice: "auto",
             max_tokens: 500,
             temperature: 0.3,
@@ -126,12 +172,13 @@ ${agentKit.hours}
 
     if (!response || !response.ok) {
       console.error("AI API error:", response?.status);
-      return Response.json({ reply: "متأسفم، خطایی رخ داد. لطفاً دوباره تلاش کنید.", orderPlaced: false });
+      return Response.json({ reply: "متأسفم، خطایی رخ داد. لطفاً دوباره تلاش کنید.", orderPlaced: false, cartActions: [] });
     }
 
     const data = await response.json();
     let fullContent = "";
     let orderPlaced = false;
+    const cartActions: CartAction[] = [];
 
     if (data.choices?.[0]?.message?.content) {
       fullContent = data.choices[0].message.content;
@@ -139,40 +186,59 @@ ${agentKit.hours}
 
     if (data.choices?.[0]?.finish_reason === "tool_calls" && data.choices[0].message.tool_calls) {
       for (const tc of data.choices[0].message.tool_calls) {
-        if (tc.function?.name === "create_order") {
-          try {
-            const args = JSON.parse(tc.function.arguments || "{}");
-            if (Array.isArray(cart) && cart.length > 0) {
-              const rid = restaurant?.id || restaurant_id || "rest_default";
-              const order = await createOrder({
-                restaurantId: rid,
-                items: cart.map((c: CartItem) => ({
-                  id: c.menuItem.id,
-                  menuItemId: c.menuItem.id,
-                  nameFa: c.menuItem.nameFa,
-                  nameEn: c.menuItem.nameEn,
-                  price: c.menuItem.price,
-                  quantity: c.quantity,
-                  notes: "",
-                  totalPrice: c.menuItem.price * c.quantity,
-                })),
-                tableNumber: sanitizeTableNumber(args.table || ""),
-                customerPhone: sanitizePhone(args.phone || ""),
-                customerName: sanitizeMessage(args.customerName || ""),
-                notes: sanitizeMessage(args.notes || ""),
-                orderType: "dine_in",
+        if (!tc.function?.name) continue;
+
+        try {
+          const args = JSON.parse(tc.function.arguments || "{}");
+
+          if (tc.function.name === "add_to_cart") {
+            const item = menuItems.find((m) => m.id === args.itemId);
+            if (item) {
+              cartActions.push({
+                type: "add",
+                item: { id: item.id, nameFa: item.nameFa, nameEn: item.nameEn, price: item.price },
+                quantity: args.quantity || 1,
               });
-              if (order) {
-                orderPlaced = true;
-                fullContent += `\n\n✅ سفارش #${order.id.slice(0, 8)} با موفقیت ثبت شد! آماده‌سازی شروع شده 🎉`;
-              }
-            } else {
-              fullContent += "\n\n🤔 سبد خریدت خالی است. لطفاً اول آیتم‌های مورد نظرت را از منو انتخاب کن.";
             }
-          } catch (e) {
-            console.error("Tool execution error:", e);
-            fullContent += "\n\n❌ خطایی در ثبت سفارش رخ داد.";
           }
+
+          if (tc.function.name === "remove_from_cart") {
+            cartActions.push({
+              type: "remove",
+              itemId: args.itemId,
+              quantity: args.quantity || 9999,
+            });
+          }
+
+          if (tc.function.name === "create_order" && Array.isArray(cart) && cart.length > 0) {
+            const rid = restaurant?.id || restaurant_id || "rest_default";
+            const order = await createOrder({
+              restaurantId: rid,
+              items: cart.map((c: CartItem) => ({
+                id: c.menuItem.id,
+                menuItemId: c.menuItem.id,
+                nameFa: c.menuItem.nameFa,
+                nameEn: c.menuItem.nameEn,
+                price: c.menuItem.price,
+                quantity: c.quantity,
+                notes: "",
+                totalPrice: c.menuItem.price * c.quantity,
+              })),
+              tableNumber: sanitizeTableNumber(args.table || ""),
+              customerPhone: sanitizePhone(args.phone || ""),
+              customerName: sanitizeMessage(args.customerName || ""),
+              notes: sanitizeMessage(args.notes || ""),
+              orderType: "dine_in",
+            });
+            if (order) {
+              orderPlaced = true;
+              cartActions.push({ type: "remove" as const, itemId: "*", quantity: 9999 });
+              fullContent += `\n\n✅ سفارش #${order.id.slice(0, 8)} با موفقیت ثبت شد! آماده‌سازی شروع شده 🎉`;
+            }
+          }
+        } catch (e) {
+          console.error("Tool execution error:", e);
+          fullContent += "\n\n❌ خطایی در ثبت سفارش رخ داد.";
         }
       }
     }
@@ -181,10 +247,9 @@ ${agentKit.hours}
       fullContent = "پاسخی دریافت نشد.";
     }
 
-    return Response.json({ reply: fullContent, orderPlaced });
+    return Response.json({ reply: fullContent, orderPlaced, cartActions });
   } catch (error) {
     console.error("AI route error:", error);
-    const reply = "متأسفم، ارتباط با سرور برقرار نشد.";
-    return Response.json({ reply, orderPlaced: false }, { status: 200 });
+    return Response.json({ reply: "متأسفم، ارتباط با سرور برقرار نشد.", orderPlaced: false, cartActions: [] }, { status: 200 });
   }
 }
