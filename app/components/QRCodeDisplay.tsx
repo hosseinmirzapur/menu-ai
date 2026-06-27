@@ -6,22 +6,25 @@ import QRCode from "qrcode";
 interface QRCodeDisplayProps {
   size?: number;
   compact?: boolean;
+  url?: string;
 }
 
 export default function QRCodeDisplay({
   size = 200,
   compact = false,
+  url: customUrl,
 }: QRCodeDisplayProps) {
   const [qrDataUrl, setQrDataUrl] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
+  const [displayUrl, setDisplayUrl] = useState("");
 
   useEffect(() => {
-    const url =
+    const baseUrl =
+      customUrl ||
       process.env.NEXT_PUBLIC_BASE_URL ||
       (typeof window !== "undefined" ? window.location.origin : "");
-    setBaseUrl(url);
+    setDisplayUrl(baseUrl);
 
-    QRCode.toDataURL(url, {
+    QRCode.toDataURL(baseUrl, {
       width: size,
       margin: compact ? 1 : 2,
       color: {
@@ -48,7 +51,7 @@ export default function QRCodeDisplay({
     <div className="flex flex-col items-center gap-2">
       <img
         src={qrDataUrl}
-        alt={`QR Code for ${baseUrl}`}
+        alt={`QR Code for ${displayUrl}`}
         className="rounded-xl"
         width={size}
         height={size}
@@ -58,7 +61,7 @@ export default function QRCodeDisplay({
           className="text-xs text-[#8B7355] text-center break-all font-sans"
           dir="ltr"
         >
-          {baseUrl.replace(/^https?:\/\//, "")}
+          {displayUrl.replace(/^https?:\/\//, "")}
         </p>
       )}
     </div>

@@ -38,6 +38,7 @@ export default function CustomerMenuPage({
 }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [qrUrl, setQrUrl] = useState("");
   const headerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -61,6 +62,11 @@ export default function CustomerMenuPage({
   useEffect(() => {
     applyTheme(restaurant.themeConfig);
   }, [restaurant.themeConfig]);
+
+  useEffect(() => {
+    const base = process.env.NEXT_PUBLIC_BASE_URL || window.location.origin;
+    setQrUrl(`${base}/restaurant/${restaurant.slug}`);
+  }, [restaurant.slug]);
 
   const handleCartChange = useCallback((items: CartItem[]) => setCart(items), []);
   const handleOrderSuccess = useCallback(() => { setCart([]); setShowSuccess(true); }, []);
@@ -121,7 +127,7 @@ export default function CustomerMenuPage({
           </p>
           <div className="mt-5 flex justify-center">
             <div className="bg-[#1C1917] border border-[#3D352D] rounded-xl p-3">
-              <QRCodeDisplay size={70} compact />
+              <QRCodeDisplay size={70} compact url={qrUrl} />
             </div>
           </div>
         </motion.header>

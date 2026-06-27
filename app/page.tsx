@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import { useGSAP } from "@gsap/react";
@@ -86,6 +86,12 @@ function HomePageInner() {
     });
   }, []);
 
+  const [qrUrl, setQrUrl] = useState("");
+  useEffect(() => {
+    const base = process.env.NEXT_PUBLIC_BASE_URL || window.location.origin;
+    setQrUrl(`${base}/restaurant/${slug}`);
+  }, [slug]);
+
   const nameFa = restaurant?.nameFa || "کافه دیجیتال";
   const descFa = restaurant?.descriptionFa || "آیتم‌های مورد نظرت را انتخاب کن و با دستیار هوشمند سفارش بده";
 
@@ -117,7 +123,7 @@ function HomePageInner() {
           </p>
           <div className="mt-5 flex justify-center">
             <div className="bg-[#1C1917] border border-[#3D352D] rounded-xl p-3">
-              <QRCodeDisplay size={70} compact />
+              <QRCodeDisplay size={70} compact url={qrUrl} />
             </div>
           </div>
         </motion.header>
