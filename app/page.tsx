@@ -56,6 +56,36 @@ function HomePageInner() {
     setShowSuccess(true);
   }, []);
 
+  const handleCartActions = useCallback((actions: Array<{ type: string; item?: any; itemId?: string; quantity: number }>) => {
+    setCart((prev) => {
+      let updated = [...prev];
+      for (const action of actions) {
+        if (action.type === "add" && action.item) {
+          const existing = updated.find((c) => c.menuItem.id === action.item.id);
+          if (existing) {
+            existing.quantity += action.quantity;
+          } else {
+            updated.push({ menuItem: action.item, quantity: action.quantity });
+          }
+        } else if (action.type === "remove" && action.itemId) {
+          if (action.itemId === "*") {
+            updated = [];
+          } else {
+            const idx = updated.findIndex((c) => c.menuItem.id === action.itemId);
+            if (idx >= 0) {
+              if (updated[idx].quantity <= action.quantity) {
+                updated.splice(idx, 1);
+              } else {
+                updated[idx] = { ...updated[idx], quantity: updated[idx].quantity - action.quantity };
+              }
+            }
+          }
+        }
+      }
+      return updated;
+    });
+  }, []);
+
   const nameFa = restaurant?.nameFa || "کافه دیجیتال";
   const descFa = restaurant?.descriptionFa || "آیتم‌های مورد نظرت را انتخاب کن و با دستیار هوشمند سفارش بده";
 
@@ -95,7 +125,7 @@ function HomePageInner() {
         <MenuGrid onCartChange={handleCartChange} restaurantSlug={slug} restaurantId={restaurant?.id} />
       </div>
 
-      <ChatModal cart={cart} onOrderSuccess={handleOrderSuccess} restaurantSlug={slug} restaurantId={restaurant?.id} />
+      <ChatModal cart={cart} onOrderSuccess={handleOrderSuccess} onCartActions={handleCartActions} restaurantSlug={slug} restaurantId={restaurant?.id} />
 
       {showSuccess && (
         <OrderSuccess onClose={() => setShowSuccess(false)} />
