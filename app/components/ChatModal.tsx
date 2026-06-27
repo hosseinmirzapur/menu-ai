@@ -68,14 +68,12 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [micSupported, setMicSupported] = useState(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
-  const abortRef = useRef<AbortController | null>(null);
 
   const isBrowser = typeof window !== "undefined";
   const SpeechRecognition =
@@ -84,7 +82,7 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingContent]);
+  }, [messages]);
 
   useEffect(() => {
     if (!SpeechRecognition) setMicSupported(false);
@@ -104,16 +102,11 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
       setInput("");
       addMessage({ role: "user", content: userMsg });
       setIsLoading(true);
-      setStreamingContent("");
-
-      const abortController = new AbortController();
-      abortRef.current = abortController;
 
       try {
         const res = await fetch("/api/ai", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          signal: abortController.signal,
           body: JSON.stringify({
             messages: [...messages, { role: "user", content: userMsg }].slice(-10),
             restaurant_slug: restaurantSlug,
@@ -122,60 +115,20 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
           }),
         });
 
-        const reader = res.body?.getReader();
-        if (!reader) throw new Error("No response body");
-
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let accumulated = "";
-        let orderPlaced = false;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
-
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed.startsWith("data: ")) continue;
-
-            const data = trimmed.slice(6).trim();
-            if (!data) continue;
-
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.reply !== undefined) {
-                accumulated = parsed.reply;
-                setStreamingContent(accumulated);
-              }
-              if (parsed.orderPlaced !== undefined) {
-                orderPlaced = parsed.orderPlaced;
-              }
-            } catch {
-              // skip malformed
-            }
-          }
+        const data = await res.json();
+        if (data.reply) {
+          addMessage({ role: "assistant", content: data.reply });
         }
-
-        if (accumulated) {
-          addMessage({ role: "assistant", content: accumulated });
-        }
-        if (orderPlaced) {
+        if (data.orderPlaced) {
           onOrderSuccess();
         }
-      } catch (err: any) {
-        if (err.name === "AbortError") return;
+      } catch {
         addMessage({
           role: "assistant",
           content: "متأسفم، خطایی رخ داد. لطفاً دوباره تلاش کن.",
         });
       } finally {
         setIsLoading(false);
-        setStreamingContent(null);
-        abortRef.current = null;
       }
     },
     [isLoading, messages, cart, addMessage, restaurantSlug, restaurantId, onOrderSuccess]
@@ -296,11 +249,11 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3">
                 {messages.map((msg, i) => (
                   <div key={i} className={`flex ${msg.role === "user" ? "justify-start" : "justify-end"}`}>
                     <div
-                      className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed ${
+                      className={`max-w-[85%] md:max-w-[80%] p-3 rounded-2xl text-sm leading-relaxed break-words ${
                         msg.role === "user"
                           ? "bg-[#C4A88A]/10 text-[#C4A88A] rounded-br-md border border-[#C4A88A]/20"
                           : "bg-[#292524] text-[#EDE4D8] rounded-bl-md"
@@ -311,16 +264,15 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
                   </div>
                 ))}
 
-                {streamingContent !== null && (
+                {isLoading && (
                   <div className="flex justify-end">
-                    <div className="max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed bg-[#292524] text-[#EDE4D8] rounded-bl-md">
-                      <MsgText content={streamingContent} />
-                      <span className="inline-block w-1.5 h-4 bg-[#C4A88A] ml-0.5 animate-pulse" />
+                    <div className="bg-[#292524] rounded-2xl rounded-bl-md px-4 py-3 text-sm">
+                      <span className="text-[#8B7355]">...در حال فکر کردن</span>
                     </div>
                   </div>
                 )}
 
-                {cart.length > 0 && !isLoading && streamingContent === null && (
+                {cart.length > 0 && !isLoading && (
                   <div className="bg-[#292524] rounded-2xl p-3 text-sm">
                     <p className="font-bold text-[#C4A88A] mb-2">
                       <ShoppingCart size={16} className="inline align-middle ml-1" />
@@ -329,7 +281,7 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
                     {cart.map((c) => (
                       <div key={c.menuItem.id} className="flex justify-between text-[#8B7355] text-xs py-1">
                         <span>{c.menuItem.nameFa} × {c.quantity}</span>
-                        <span dir="ltr" className="font-sans">
+                        <span dir="ltr" className="font-sans shrink-0">
                           {new Intl.NumberFormat("fa-IR").format(c.menuItem.price * c.quantity)} تومان
                         </span>
                       </div>
@@ -339,14 +291,6 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
                       <span dir="ltr" className="font-sans">
                         {new Intl.NumberFormat("fa-IR").format(totalPrice)} تومان
                       </span>
-                    </div>
-                  </div>
-                )}
-
-                {isLoading && streamingContent === null && (
-                  <div className="flex justify-end">
-                    <div className="bg-[#292524] rounded-2xl rounded-bl-md p-3">
-                      <span className="text-[#8B7355]">...در حال فکر کردن</span>
                     </div>
                   </div>
                 )}
@@ -377,13 +321,13 @@ export default function ChatModal({ cart, onOrderSuccess, restaurantSlug = "berl
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="پیام خود را بنویسید..."
-                    className="flex-1 border rounded-xl px-4 py-2.5 text-sm outline-none placeholder:text-[#8B7355]"
+                    className="flex-1 min-w-0 border rounded-xl px-4 py-2.5 text-sm outline-none placeholder:text-[#8B7355]"
                     style={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}
                   />
                   <button
                     onClick={() => handleSendMessage(input)}
                     disabled={!input.trim() || isLoading}
-                    className="px-4 py-2.5 rounded-xl text-sm font-bold border disabled:opacity-40 transition-colors"
+                    className="px-4 py-2.5 rounded-xl text-sm font-bold border disabled:opacity-40 transition-colors shrink-0"
                     style={{ backgroundColor: "rgba(196,168,138,0.1)", color: "#C4A88A", borderColor: "rgba(196,168,138,0.2)" }}
                   >
                     ارسال
